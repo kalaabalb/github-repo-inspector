@@ -15,6 +15,17 @@ SECRET_PATTERN = re.compile(
 )
 PRIVATE_KEY_PATTERN = re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")
 ENVIRONMENT_URL_PATTERN = re.compile(r"https?://(?:localhost|127\.0\.0\.1|dev\.|staging\.|internal\.)", re.I)
+PRIVATE_NETWORK_PATTERN = re.compile(
+    r"(?<!\d)(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?!\d)"
+)
+INSECURE_URL_PATTERN = re.compile(
+    r"\b(?:url|uri|endpoint|base[-_]?url|api[-_]?url|origin|host)\b\s*(?::|=)\s*[\"']?http://(?!localhost(?:[:/]|$)|127\.0\.0\.1(?:[:/]|$))[^\s'\"]+",
+    re.I,
+)
+WILDCARD_CORS_PATTERN = re.compile(r"(?:allow_origins|origins)\s*=\s*\[[^\]]*[\"']\*[\"']", re.I)
+DEBUG_PATTERN = re.compile(r"\b(?:debug|DEBUG)\s*=\s*(?:True|true|1)\b")
+ENVIRONMENT_USAGE_PATTERN = re.compile(r"(?:os\.getenv|os\.environ|getenv\(|process\.env|String\.fromEnvironment)")
+DATABASE_URL_PATTERN = re.compile(r"(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis)://", re.I)
 TODO_PATTERN = re.compile(r"\b(TODO|FIXME|HACK|XXX)\b", re.I)
 
 
@@ -22,9 +33,13 @@ def analyze_codebase_health(snapshot: RepositorySnapshot, analysis: AnalysisRepo
     findings: list[Finding] = []
     findings.extend(_secret_findings(snapshot))
     findings.extend(_documentation_findings(snapshot, analysis))
+    findings.extend(_purpose_findings(snapshot, analysis))
+    findings.extend(_configuration_findings(snapshot))
     findings.extend(_todo_findings(snapshot))
     findings.extend(_testing_findings(snapshot, analysis))
+    findings.extend(_readiness_findings(snapshot, analysis))
     findings.extend(_structure_findings(snapshot, analysis))
+    findings.extend(_architecture_findings(snapshot, analysis))
     findings.extend(_repository_quality_findings(snapshot, analysis))
     findings.extend(_dependency_findings(snapshot))
     findings = sorted(findings, key=lambda finding: (finding.category, finding.id))
@@ -40,6 +55,8 @@ def analyze_codebase_health(snapshot: RepositorySnapshot, analysis: AnalysisRepo
 def _secret_findings(snapshot: RepositorySnapshot) -> list[Finding]:
     findings: list[Finding] = []
     for path, content in _all_inspected_contents(snapshot).items():
+        if _is_documentation_path(path):
+            continue
         if PRIVATE_KEY_PATTERN.search(content):
             findings.append(_finding(
                 "potential_secret", "security", "high", "Potential private key exposed",
@@ -57,6 +74,90 @@ def _secret_findings(snapshot: RepositorySnapshot) -> list[Finding]:
                 "hardcoded_configuration", "configuration", "low", "Environment-specific URL may need review",
                 "An environment-specific URL was found in inspected content. This is not automatically a secret.",
                 [path], "medium", "Confirm that this endpoint belongs in versioned configuration and is safe for the target environment.",
+            ))
+        if PRIVATE_NETWORK_PATTERN.search(content):
+            findings.append(_finding(
+                "private_network_address", "configuration", "low", "Private network address may need review",
+                "A private-network address was found in inspected operational content. This may be intentional development or deployment configuration.",
+                [f"{path}: private-network address detected"], "medium", "Confirm that the address is appropriate for the target environment and move environment-specific values into configuration when practical.",
+                affected_paths=[path],
+            ))
+        if INSECURE_URL_PATTERN.search(content):
+            findings.append(_finding(
+                "insecure_http_endpoint", "security", "low", "HTTP endpoint may need review",
+                "An HTTP endpoint was found in inspected operational content. The analyzer cannot determine whether it is protected by a trusted network.",
+                [f"{path}: HTTP endpoint detected"], "medium", "Prefer HTTPS for production traffic and confirm whether this endpoint is development-only.",
+                affected_paths=[path],
+            ))
+        if DATABASE_URL_PATTERN.search(content):
+            findings.append(_finding(
+                "database_connection_string", "security", "medium", "Database connection string detected",
+                "A database connection-string pattern was found; any credential material is intentionally excluded from this report.",
+                [f"{path}: database connection-string pattern detected"], "medium", "Keep connection strings and credentials outside source control and use environment-based configuration.",
+                affected_paths=[path],
+            ))
+    return findings
+
+
+def _purpose_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> list[Finding]:
+    readme_path = next((path for path in snapshot.file_contents if PurePosixPath(path).name.lower().startswith("readme")), None)
+    if readme_path is None:
+        return []
+    purpose = " ".join(
+        part for part in [snapshot.file_contents.get(readme_path, ""), snapshot.metadata.description or ""] if part
+    ).lower()
+    findings: list[Finding] = []
+    frameworks = {signal.name for signal in analysis.frameworks}
+    languages = {signal.name for signal in analysis.languages}
+    roots = {path.split("/", 1)[0].lower() for path in analysis.structure.notable_paths}
+    backend_evidence = frameworks & {"FastAPI", "Django", "Flask", "Express", "Spring", ".NET"}
+    has_backend = bool(backend_evidence or analysis.api_signals or roots & {"api", "backend", "server"})
+    claims = [
+        ("flutter", "mobile", "Flutter", bool("Flutter" in frameworks or "Dart" in languages), "purpose_flutter_not_observed"),
+        ("api", "backend", "API/backend", has_backend, "purpose_api_not_observed"),
+        ("backend", "backend", "API/backend", has_backend, "purpose_backend_not_observed"),
+        ("postgresql", "database", "PostgreSQL", "PostgreSQL" in {signal.name for signal in analysis.databases}, "purpose_database_not_observed"),
+        ("mongodb", "database", "MongoDB", "MongoDB" in {signal.name for signal in analysis.databases}, "purpose_database_not_observed"),
+    ]
+    seen_ids: set[str] = set()
+    for term, label, name, supported, finding_id in claims:
+        if term not in purpose or supported or finding_id in seen_ids:
+            continue
+        seen_ids.add(finding_id)
+        findings.append(_finding(
+            finding_id, "documentation", "low", f"Purpose claim not verified: {name}",
+            f"The README or repository description mentions {label}, but matching evidence was not found in the bounded inspection. This is a potential inconsistency, not proof that the claim is false.",
+            [readme_path], "medium", "Review the stated purpose against the current implementation and add or update supporting documentation.",
+        ))
+    if ("full-stack" in purpose or "frontend and backend" in purpose or "frontend/backend" in purpose) and not (
+        roots & {"client", "frontend", "mobile"} and roots & {"api", "backend", "server"}
+    ):
+        findings.append(_finding(
+            "purpose_multicomponent_not_observed", "documentation", "low", "Multiple-component purpose not verified",
+            "The documentation describes multiple application components, but the bounded structure does not show both a client/frontend and backend area.",
+            [readme_path], "medium", "Verify the documented component boundaries against the current repository structure.",
+        ))
+    return findings
+
+
+def _configuration_findings(snapshot: RepositorySnapshot) -> list[Finding]:
+    findings: list[Finding] = []
+    for path, content in _all_inspected_contents(snapshot).items():
+        if _is_documentation_path(path):
+            continue
+        if WILDCARD_CORS_PATTERN.search(content):
+            findings.append(_finding(
+                "wildcard_cors", "security", "low", "Wildcard CORS configuration detected",
+                "A wildcard CORS origin was found in inspected operational content. The analyzer cannot determine the deployment context.",
+                [f"{path}: wildcard CORS origin detected"], "medium", "Restrict allowed origins to the clients and environments that require access.",
+                affected_paths=[path],
+            ))
+        if DEBUG_PATTERN.search(content):
+            findings.append(_finding(
+                "debug_configuration", "configuration", "low", "Debug configuration enabled",
+                "A debug setting appears enabled in inspected operational content; this may be appropriate for development but should be reviewed for deployment.",
+                [f"{path}: debug setting detected"], "medium", "Keep debug settings environment-specific and disabled where production configuration requires it.",
+                affected_paths=[path],
             ))
     return findings
 
@@ -132,6 +233,46 @@ def _testing_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) ->
     return []
 
 
+def _readiness_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> list[Finding]:
+    characteristics = analysis.project_characteristics
+    frameworks = {signal.name for signal in analysis.frameworks}
+    app_like = bool(
+        frameworks
+        or analysis.api_signals
+        or {path.split("/", 1)[0].lower() for path in analysis.structure.notable_paths}
+        & {"client", "frontend", "mobile", "api", "backend", "server"}
+    )
+    findings: list[Finding] = []
+    if app_like and not characteristics.has_ci_configuration:
+        findings.append(_finding(
+            "ci_not_detected", "testing", "low", "CI configuration not detected",
+            "No recognizable CI configuration was found in the bounded repository tree. This does not prove that CI is absent elsewhere.",
+            ["inspected repository tree"], "medium", "Consider adding automated checks for tests and static analysis if this project is maintained as an application.",
+        ))
+    if not characteristics.has_environment_example and any(
+        ENVIRONMENT_USAGE_PATTERN.search(content)
+        for path, content in _all_inspected_contents(snapshot).items()
+        if not _is_documentation_path(path)
+    ):
+        findings.append(_finding(
+            "environment_template_not_detected", "configuration", "low", "Environment usage found without a template",
+            "Environment-variable usage was detected, but no recognizable environment example or template was found in the bounded tree.",
+            ["inspected repository tree"], "medium", "Document required environment variables with a safe example that contains no credentials.",
+        ))
+    deployment_paths = [
+        path for path in snapshot.files
+        if PurePosixPath(path).name.lower() in {"dockerfile", "docker-compose.yml", "docker-compose.yaml", "procfile"}
+        or PurePosixPath(path).name.lower() in {"deploy.sh", "deploy.yml", "deploy.yaml"}
+    ]
+    if characteristics.has_docker_configuration or deployment_paths:
+        findings.append(_finding(
+            "deployment_configuration_detected", "repository_quality", "info", "Deployment configuration detected",
+            "The bounded repository tree contains recognizable deployment or container configuration.",
+            deployment_paths or [path for path in snapshot.files if PurePosixPath(path).name.lower() == "dockerfile"], "high", "Keep deployment instructions and environment requirements documented.",
+        ))
+    return findings
+
+
 def _structure_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> list[Finding]:
     findings = []
     deep_paths = [path for path in snapshot.files if len(path.split("/")) >= 7]
@@ -154,6 +295,45 @@ def _structure_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) 
             "client_backend_separation", "architecture", "info", "Client and backend areas are separated",
             "Top-level structure contains recognizable client/frontend/mobile and backend/API/server areas.",
             sorted(roots & {"client", "frontend", "mobile", "api", "backend", "server"}), "high", "Document the boundary and communication contract between these areas.",
+        ))
+    return findings
+
+
+def _architecture_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> list[Finding]:
+    findings: list[Finding] = []
+    if analysis.api_signals:
+        paths = [path for signal in analysis.api_signals for path in signal.evidence]
+        findings.append(_finding(
+            "api_boundary_observed", "architecture", "info", "API boundary evidence detected",
+            "Observable route, API, or protocol signals suggest an API boundary; this is not a complete API inventory.",
+            [f"{path}: API signal detected" for path in sorted(set(paths))], "high", "Document the exposed boundary and its request/response contract.",
+            affected_paths=paths,
+        ))
+    if analysis.databases:
+        paths = [path for signal in analysis.databases for path in signal.evidence]
+        findings.append(_finding(
+            "database_integration_observed", "architecture", "info", "Database integration evidence detected",
+            "Configuration or source evidence suggests database integration; runtime connectivity was not verified.",
+            [f"{path}: database signal detected" for path in sorted(set(paths))], "medium", "Document the data boundary and required connection configuration.",
+            affected_paths=paths,
+        ))
+    if analysis.authentication:
+        paths = [path for signal in analysis.authentication for path in signal.evidence]
+        findings.append(_finding(
+            "authentication_boundary_observed", "architecture", "info", "Authentication boundary evidence detected",
+            "Authentication-related implementation signals were detected; security and runtime behavior were not verified.",
+            [f"{path}: authentication signal detected" for path in sorted(set(paths))], "medium", "Document where authentication is applied and how protected boundaries are defined.",
+            affected_paths=paths,
+        ))
+    manifest_paths = [
+        path for path in snapshot.files
+        if PurePosixPath(path).name.lower() in {"package.json", "pubspec.yaml", "pyproject.toml", "requirements.txt", "go.mod", "cargo.toml"}
+    ]
+    if len(manifest_paths) > 1 and len({PurePosixPath(path).parent for path in manifest_paths}) > 1:
+        findings.append(_finding(
+            "monorepo_structure_observed", "architecture", "info", "Multiple package areas observed",
+            "More than one dependency manifest appears in separate repository areas, suggesting a multi-package structure.",
+            manifest_paths, "high", "Document package ownership and how the package areas are built or released.",
         ))
     return findings
 
@@ -211,6 +391,7 @@ def _finding(
     evidence: list[str],
     confidence: str,
     recommendation: str,
+    affected_paths: list[str] | None = None,
 ) -> Finding:
     why_it_matters, recommended_action = _guidance(finding_id, recommendation)
     return Finding(
@@ -220,7 +401,7 @@ def _finding(
         title=title,
         summary=summary,
         evidence=sorted(set(evidence)),
-        affected_paths=sorted(set(evidence)),
+        affected_paths=sorted(set(affected_paths or evidence)),
         confidence=confidence,  # type: ignore[arg-type]
         recommendation=recommendation,
         why_it_matters=why_it_matters,
@@ -240,6 +421,74 @@ _GUIDANCE: dict[str, tuple[str, str]] = {
     "hardcoded_configuration": (
         "Environment-specific configuration embedded in source can make deployment and configuration management harder.",
         "Move environment-specific values into an appropriate configuration mechanism and keep secrets outside source control.",
+    ),
+    "private_network_address": (
+        "Private addresses can couple a repository to one development or deployment network.",
+        "Confirm the address is environment-appropriate and move it into configuration when practical.",
+    ),
+    "insecure_http_endpoint": (
+        "Unencrypted HTTP can expose traffic when it crosses an untrusted network.",
+        "Prefer HTTPS for production traffic and confirm whether this endpoint is development-only.",
+    ),
+    "database_connection_string": (
+        "Connection strings can include credentials or reveal infrastructure details.",
+        "Keep connection strings outside source control and use environment-based configuration.",
+    ),
+    "wildcard_cors": (
+        "Wildcard CORS can allow unexpected web origins to call a browser-accessible API.",
+        "Restrict allowed origins to the clients and environments that require access.",
+    ),
+    "debug_configuration": (
+        "Debug settings can expose diagnostic behavior or unsafe defaults in a deployed service.",
+        "Keep debug settings environment-specific and disabled where production configuration requires it.",
+    ),
+    "environment_template_not_detected": (
+        "Undocumented environment variables make setup less reproducible and can encourage unsafe secret handling.",
+        "Document required variables with a safe example that contains no credentials.",
+    ),
+    "ci_not_detected": (
+        "Without visible CI checks, regressions may not be caught consistently before changes are merged.",
+        "Consider adding automated tests and static analysis to a CI workflow.",
+    ),
+    "deployment_configuration_detected": (
+        "Deployment configuration helps explain how the project is intended to run outside development.",
+        "Keep deployment instructions and environment requirements documented.",
+    ),
+    "api_boundary_observed": (
+        "An explicit API boundary helps reviewers understand how clients and services communicate.",
+        "Document the exposed boundary and its request/response contract.",
+    ),
+    "database_integration_observed": (
+        "A database boundary identifies where persistence and operational configuration enter the system.",
+        "Document the data boundary and required connection configuration.",
+    ),
+    "authentication_boundary_observed": (
+        "An authentication boundary identifies where access-control behavior must be reviewed carefully.",
+        "Document where authentication is applied and how protected boundaries are defined.",
+    ),
+    "monorepo_structure_observed": (
+        "Multiple package areas can increase build and ownership complexity.",
+        "Document package ownership and how the package areas are built or released.",
+    ),
+    "purpose_flutter_not_observed": (
+        "A purpose claim without matching bounded evidence can mislead readers about the repository contents.",
+        "Review the stated purpose against the current implementation and supporting files.",
+    ),
+    "purpose_api_not_observed": (
+        "An unverified API claim can make the repository architecture harder to understand.",
+        "Review the API claim against detected routes, frameworks, and structure.",
+    ),
+    "purpose_backend_not_observed": (
+        "An unverified backend claim can make the repository architecture harder to understand.",
+        "Review the backend claim against detected frameworks, routes, and structure.",
+    ),
+    "purpose_database_not_observed": (
+        "An unverified database claim can create incorrect expectations about persistence.",
+        "Review the database claim against detected dependencies and configuration.",
+    ),
+    "purpose_multicomponent_not_observed": (
+        "A multi-component claim without matching boundaries can confuse contributors about project layout.",
+        "Verify the documented component boundaries against the repository structure.",
     ),
     "documentation_verified": (
         "Matching evidence gives users a concrete basis for the documented technology claim.",
@@ -305,6 +554,10 @@ def _guidance(finding_id: str, fallback_action: str) -> tuple[str, str]:
     if guidance is not None:
         return guidance
     return "This static observation should be reviewed in the context of the repository.", fallback_action
+
+
+def _is_documentation_path(path: str) -> bool:
+    return PurePosixPath(path).name.lower().startswith("readme") or PurePosixPath(path).suffix.lower() in {".md", ".rst"}
 
 
 def _all_inspected_contents(snapshot: RepositorySnapshot) -> dict[str, str]:

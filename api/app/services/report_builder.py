@@ -66,11 +66,11 @@ def build_project_report(analysis: AnalysisReport) -> ProjectReport:
             ],
             potential_issues=[
                 finding.title for finding in analysis.findings
-                if finding.id not in {"documentation_unverified"}
+                if finding.severity != "info"
             ],
             not_verified=[
                 finding.title for finding in analysis.findings
-                if finding.id == "documentation_unverified"
+                if finding.category == "documentation" and finding.severity != "info"
             ],
             limitations=analysis.limitations.notes,
             runtime_status="Code was not executed.",

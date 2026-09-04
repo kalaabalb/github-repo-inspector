@@ -42,9 +42,9 @@ class ReportScreen extends StatelessWidget {
                 child: _TrustContext(report: report),
               ),
               _ReportSection(
-                title: 'Codebase health',
-                icon: Icons.health_and_safety_outlined,
-                child: _Health(report: report),
+                title: 'Repository purpose',
+                icon: Icons.description_outlined,
+                child: _Purpose(report: report),
               ),
               _ReportSection(
                 title: 'Source inspection',
@@ -57,9 +57,54 @@ class ReportScreen extends StatelessWidget {
                 child: _TechnologyStack(report: report),
               ),
               _ReportSection(
-                title: 'Architecture',
+                title: 'Codebase health',
+                icon: Icons.health_and_safety_outlined,
+                child: _Health(report: report),
+              ),
+              _ReportSection(
+                title: 'Architecture assessment',
                 icon: Icons.account_tree_outlined,
                 child: _Architecture(report: report),
+              ),
+              _ReportSection(
+                title: 'Security signals',
+                icon: Icons.shield_outlined,
+                child: _FindingList(
+                  findings: report.findings
+                      .where((finding) => finding.category == 'security')
+                      .toList(),
+                  empty: 'No conservative security signals detected.',
+                ),
+              ),
+              _ReportSection(
+                title: 'Configuration risks',
+                icon: Icons.settings_outlined,
+                child: _FindingList(
+                  findings: report.findings
+                      .where((finding) => finding.category == 'configuration')
+                      .toList(),
+                  empty: 'No configuration risks detected in inspected content.',
+                ),
+              ),
+              _ReportSection(
+                title: 'Testing & CI',
+                icon: Icons.fact_check_outlined,
+                child: _FindingList(
+                  findings: report.findings
+                      .where((finding) => finding.category == 'testing')
+                      .toList(),
+                  empty: 'No testing or CI findings were emitted.',
+                ),
+              ),
+              _ReportSection(
+                title: 'Release readiness',
+                icon: Icons.rocket_launch_outlined,
+                child: _FindingList(
+                  findings: report.findings
+                      .where((finding) => finding.category == 'repository_quality')
+                      .toList(),
+                  empty: 'No repository-quality readiness findings were emitted.',
+                ),
               ),
               _ReportSection(
                 title: 'API',
@@ -194,6 +239,33 @@ class _Overview extends StatelessWidget {
   );
 }
 
+class _Purpose extends StatelessWidget {
+  const _Purpose({required this.report});
+
+  final ProjectReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final findings = report.findings
+        .where((finding) =>
+            finding.category == 'documentation' && finding.id.startsWith('purpose_'))
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Detected as ${report.overview.primaryClassification}.'),
+        const SizedBox(height: 8),
+        _BulletList(items: report.overview.classificationBasis),
+        if (findings.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text('Purpose consistency', style: Theme.of(context).textTheme.titleSmall),
+          _FindingList(findings: findings, empty: ''),
+        ],
+      ],
+    );
+  }
+}
+
 class _Health extends StatelessWidget {
   const _Health({required this.report});
 
@@ -326,6 +398,22 @@ class _FindingTile extends StatelessWidget {
       ],
     );
   }
+}
+
+class _FindingList extends StatelessWidget {
+  const _FindingList({required this.findings, required this.empty});
+
+  final List<CodebaseFinding> findings;
+  final String empty;
+
+  @override
+  Widget build(BuildContext context) => findings.isEmpty
+      ? Text(empty)
+      : Column(
+          children: findings
+              .map((finding) => _FindingTile(finding: finding))
+              .toList(),
+        );
 }
 
 class _SourceInspection extends StatelessWidget {

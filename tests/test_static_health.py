@@ -115,3 +115,88 @@ def test_limitation_information_is_preserved() -> None:
     project_report = __import__("app.services.report_builder", fromlist=["build_project_report"]).build_project_report(report)
 
     assert project_report.limitations == limitations
+
+
+def test_purpose_consistency_reports_unverified_claims_without_calling_them_false() -> None:
+    report = analyze_repository(snapshot(
+        ["README.md", "main.py", ".gitignore"],
+        {"README.md": "A Flutter mobile app with an API and PostgreSQL backend. This is a full-stack project.", "main.py": "print('hello')"},
+    ))
+
+    purpose_findings = [finding for finding in report.findings if finding.id.startswith("purpose_")]
+    assert {finding.id for finding in purpose_findings} == {
+        "purpose_flutter_not_observed",
+        "purpose_api_not_observed",
+        "purpose_backend_not_observed",
+        "purpose_database_not_observed",
+        "purpose_multicomponent_not_observed",
+    }
+    assert all(
+        "not proof that the claim is false" in finding.summary
+        for finding in purpose_findings
+        if finding.id != "purpose_multicomponent_not_observed"
+    )
+
+
+def test_operational_configuration_signals_are_conservative_and_redacted() -> None:
+    secret = "synthetic-password-value"
+    report = analyze_repository(snapshot(
+        ["README.md", "api/app.py"],
+        {"README.md": "A FastAPI service.", "api/app.py": (
+            f'API_KEY = "{secret}"\n'
+            'DATABASE_URL = "postgresql://user:password@db/app"\n'
+            'INTERNAL = "10.0.0.4"\n'
+            'API_URL = "http://api.example.com"\n'
+            'allow_origins = ["*"]\n'
+            'debug = True\n'
+        )},
+    ))
+
+    ids = {finding.id for finding in report.findings}
+    assert {"potential_secret", "database_connection_string", "private_network_address"} <= ids
+    assert {"insecure_http_endpoint", "wildcard_cors", "debug_configuration"} <= ids
+    assert secret not in report.model_dump_json()
+
+
+def test_localhost_http_is_not_reported_as_insecure_external_endpoint() -> None:
+    report = analyze_repository(snapshot(
+        ["README.md", "app.py"],
+        {"README.md": "A service.", "app.py": 'LOCAL = "http://localhost:8000"'},
+    ))
+
+    assert "insecure_http_endpoint" not in {finding.id for finding in report.findings}
+
+
+def test_incidental_http_text_is_not_reported_as_an_endpoint() -> None:
+    report = analyze_repository(snapshot(
+        ["README.md", "app.py"],
+        {
+            "README.md": "A service.",
+            "app.py": "# See http://example.com/docs for protocol documentation",
+        },
+    ))
+
+    assert "insecure_http_endpoint" not in {finding.id for finding in report.findings}
+
+
+def test_readiness_and_architecture_observations_use_existing_report_findings() -> None:
+    repository_snapshot = snapshot(
+        ["README.md", "api/app.py", "api/requirements.txt", "client/package.json", "Dockerfile"],
+        {
+            "README.md": "A FastAPI backend and web client.",
+            "api/app.py": 'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/")\ndef root(): return {"ok": True}\nurl = os.getenv("DATABASE_URL")',
+            "client/package.json": "{}",
+            "Dockerfile": "FROM python:3.12",
+        },
+    )
+    repository_snapshot.source_file_contents = {"api/app.py": repository_snapshot.file_contents["api/app.py"]}
+    report = analyze_repository(repository_snapshot)
+
+    ids = {finding.id for finding in report.findings}
+    assert {"ci_not_detected", "environment_template_not_detected", "deployment_configuration_detected"} <= ids
+    assert {"api_boundary_observed", "monorepo_structure_observed"} <= ids
+
+    project_report = __import__("app.services.report_builder", fromlist=["build_project_report"]).build_project_report(report)
+    assert any("CI configuration" in item for item in project_report.trust_context.potential_issues)
+    assert project_report.trust_context.not_verified == []
+    assert "Code was not executed." == project_report.trust_context.runtime_status
