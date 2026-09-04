@@ -101,7 +101,9 @@ class ReportScreen extends StatelessWidget {
                 icon: Icons.rocket_launch_outlined,
                 child: _FindingList(
                   findings: report.findings
-                      .where((finding) => finding.category == 'repository_quality')
+                      .where((finding) =>
+                          finding.category == 'release' ||
+                          finding.category == 'repository_quality')
                       .toList(),
                   empty: 'No repository-quality readiness findings were emitted.',
                 ),
@@ -282,6 +284,7 @@ class _Health extends StatelessWidget {
       'configuration',
       'architecture',
       'dependencies',
+      'release',
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -347,7 +350,7 @@ class _FindingTile extends StatelessWidget {
       leading: Icon(_severityIcon(finding.severity), color: color),
       title: Text(finding.title),
       subtitle: Text(
-        '${finding.severity} severity • ${finding.category} • ${finding.confidence} confidence',
+        '${_findingStatus(finding)} • ${finding.severity} severity • ${finding.category} • ${finding.confidence} confidence',
       ),
       children: [
         Align(
@@ -502,6 +505,14 @@ class _TrustGroup extends StatelessWidget {
 }
 
 String _categoryLabel(String category) => category.replaceAll('_', ' ');
+
+String _findingStatus(CodebaseFinding finding) {
+  if (finding.category == 'documentation' &&
+      (finding.id.contains('unverified') || finding.id.contains('not_detected'))) {
+    return 'Not verified';
+  }
+  return finding.severity == 'info' ? 'Verified / detected' : 'Potential';
+}
 
 Color _severityColor(String severity) => switch (severity) {
   'high' => const Color(0xFFFF8E7D),

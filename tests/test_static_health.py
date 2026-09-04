@@ -198,5 +198,60 @@ def test_readiness_and_architecture_observations_use_existing_report_findings() 
 
     project_report = __import__("app.services.report_builder", fromlist=["build_project_report"]).build_project_report(report)
     assert any("CI configuration" in item for item in project_report.trust_context.potential_issues)
-    assert project_report.trust_context.not_verified == []
+    assert project_report.trust_context.not_verified
+    assert all("not detected" in item.lower() for item in project_report.trust_context.not_verified)
     assert "Code was not executed." == project_report.trust_context.runtime_status
+
+
+def test_maintainability_thresholds_report_large_deep_and_excessive_work_markers() -> None:
+    markers = "\n".join("# TODO: review" for _ in range(6))
+    report = analyze_repository(snapshot(
+        ["README.md", "src/a/b/c/d/e/f/module.py"],
+        {"README.md": "A tool.", "src/a/b/c/d/e/f/module.py": markers},
+        {"src/a/b/c/d/e/f/module.py": 100_001},
+    ))
+
+    ids = {finding.id for finding in report.findings}
+    assert {"large_file", "deep_path", "todo_markers"} <= ids
+    assert "review threshold" in next(f.summary for f in report.findings if f.id == "todo_markers")
+
+
+def test_maintainability_negative_case_does_not_report_small_clean_source() -> None:
+    report = analyze_repository(snapshot(
+        ["README.md", "src/module.py"],
+        {"README.md": "A tool.", "src/module.py": "def run():\n    return True\n"},
+        {"src/module.py": 100_000},
+    ))
+
+    assert not {"large_file", "deep_path", "todo_markers"} & {finding.id for finding in report.findings}
+
+
+def test_dependency_ecosystems_and_multiple_manifests_are_reported_without_vulnerability_claims() -> None:
+    report = analyze_repository(snapshot(
+        ["pyproject.toml", "poetry.lock", "client/package.json", "api/requirements.txt"],
+    ))
+
+    ids = {finding.id for finding in report.findings}
+    assert "multiple_dependency_manifests" in ids
+    assert "lockfile_missing" not in ids
+    assert all("vulnerab" not in finding.summary.lower() for finding in report.findings)
+
+
+def test_readme_usefulness_signals_and_finding_priority_are_deterministic() -> None:
+    report = analyze_repository(snapshot(
+        ["README.md", "api/app.py", "config.py"],
+        {
+            "README.md": "A FastAPI service.",
+            "api/app.py": 'API_URL = "http://example.com"\n' + "\n".join("# TODO" for _ in range(6)),
+            "config.py": 'API_KEY = "synthetic-secret-value"',
+        },
+    ))
+
+    ids = {finding.id for finding in report.findings}
+    assert {"setup_instructions_not_detected", "testing_instructions_not_detected", "deployment_instructions_not_detected"} <= ids
+    categories = [finding.category for finding in report.findings]
+    assert categories == sorted(categories, key=lambda category: {
+        "security": 0, "configuration": 1, "architecture": 2, "maintainability": 3,
+        "testing": 4, "documentation": 5, "release": 6, "dependencies": 7,
+        "repository_quality": 8,
+    }[category])

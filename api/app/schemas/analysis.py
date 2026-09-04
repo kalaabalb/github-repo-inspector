@@ -23,6 +23,7 @@ FindingCategory = Literal[
     "dependencies",
     "maintainability",
     "repository_quality",
+    "release",
 ]
 FindingSeverity = Literal["info", "low", "medium", "high"]
 FindingConfidence = Literal["low", "medium", "high"]

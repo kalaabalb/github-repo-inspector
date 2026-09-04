@@ -28,6 +28,25 @@ ENVIRONMENT_USAGE_PATTERN = re.compile(r"(?:os\.getenv|os\.environ|getenv\(|proc
 DATABASE_URL_PATTERN = re.compile(r"(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis)://", re.I)
 TODO_PATTERN = re.compile(r"\b(TODO|FIXME|HACK|XXX)\b", re.I)
 
+# These thresholds are intentionally simple review signals, not quality scores.
+LARGE_SOURCE_FILE_BYTES = 100_000
+DEEP_SOURCE_PATH_PARTS = 7
+EXCESSIVE_WORK_MARKERS = 5
+
+FINDING_CATEGORY_ORDER = {
+    "security": 0,
+    "configuration": 1,
+    "architecture": 2,
+    "maintainability": 3,
+    "testing": 4,
+    "documentation": 5,
+    "release": 6,
+    "dependencies": 7,
+    "repository_quality": 8,
+}
+SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
+CONFIDENCE_ORDER = {"high": 0, "medium": 1, "low": 2}
+
 
 def analyze_codebase_health(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> tuple[list[Finding], HealthSummary]:
     findings: list[Finding] = []
@@ -42,7 +61,7 @@ def analyze_codebase_health(snapshot: RepositorySnapshot, analysis: AnalysisRepo
     findings.extend(_architecture_findings(snapshot, analysis))
     findings.extend(_repository_quality_findings(snapshot, analysis))
     findings.extend(_dependency_findings(snapshot))
-    findings = sorted(findings, key=lambda finding: (finding.category, finding.id))
+    findings = sorted(findings, key=_finding_sort_key)
     category_counts = dict(sorted(Counter(finding.category for finding in findings).items()))
     severity_counts = dict(sorted(Counter(finding.severity for finding in findings).items()))
     return findings, HealthSummary(
@@ -71,8 +90,8 @@ def _secret_findings(snapshot: RepositorySnapshot) -> list[Finding]:
             ))
         if ENVIRONMENT_URL_PATTERN.search(content):
             findings.append(_finding(
-                "hardcoded_configuration", "configuration", "low", "Environment-specific URL may need review",
-                "An environment-specific URL was found in inspected content. This is not automatically a secret.",
+                "hardcoded_configuration", "configuration", "low", "Development endpoint detected",
+                "A localhost, development, staging, or internal endpoint was found in inspected content. This is configuration context, not automatically a security problem or secret.",
                 [path], "medium", "Confirm that this endpoint belongs in versioned configuration and is safe for the target environment.",
             ))
         if PRIVATE_NETWORK_PATTERN.search(content):
@@ -118,6 +137,8 @@ def _purpose_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) ->
         ("backend", "backend", "API/backend", has_backend, "purpose_backend_not_observed"),
         ("postgresql", "database", "PostgreSQL", "PostgreSQL" in {signal.name for signal in analysis.databases}, "purpose_database_not_observed"),
         ("mongodb", "database", "MongoDB", "MongoDB" in {signal.name for signal in analysis.databases}, "purpose_database_not_observed"),
+        ("authentication", "authentication", "authentication", bool(analysis.authentication), "purpose_authentication_not_observed"),
+        ("docker", "Docker", "Docker", analysis.project_characteristics.has_docker_configuration, "purpose_docker_not_observed"),
     ]
     seen_ids: set[str] = set()
     for term, label, name, supported, finding_id in claims:
@@ -197,6 +218,19 @@ def _documentation_findings(snapshot: RepositorySnapshot, analysis: AnalysisRepo
                 f"The README mentions {name}, but matching evidence was not found in the bounded inspection. This does not prove the claim is false.",
                 [readme_path], "medium", "Review the claim or provide the relevant configuration/dependency evidence.",
             ))
+    checks = [
+        ("setup_instructions_not_detected", ("install", "setup", "getting started", "requirements", "dependencies"), "setup/install instructions"),
+        ("testing_instructions_not_detected", ("pytest", "flutter test", "npm test", "test suite", "testing"), "testing instructions"),
+        ("deployment_instructions_not_detected", ("deploy", "deployment", "production", "docker"), "deployment instructions"),
+        ("architecture_documentation_not_detected", ("architecture", "folder structure", "project structure", "api"), "architecture information"),
+    ]
+    for finding_id, terms, label in checks:
+        if not any(term in readme for term in terms):
+            findings.append(_finding(
+                finding_id, "documentation", "low", f"{label.capitalize()} not detected",
+                f"The README does not contain recognizable {label}. This does not prove the information is unavailable elsewhere.",
+                [readme_path], "medium", f"Add concise {label} for developers who need to run or extend the project.",
+            ))
     return findings
 
 
@@ -210,7 +244,7 @@ def _todo_findings(snapshot: RepositorySnapshot) -> list[Finding]:
             count = len(matches)
             findings.append(_finding(
                 "todo_markers", "maintainability", "low", f"{count} unresolved-work marker{'s' if count != 1 else ''} detected",
-                "TODO, FIXME, HACK, or XXX markers indicate review items; they are not automatically bugs.",
+                f"TODO, FIXME, HACK, or XXX markers indicate review items; they are not automatically bugs. {'The count exceeds the review threshold of ' + str(EXCESSIVE_WORK_MARKERS) + '.' if count > EXCESSIVE_WORK_MARKERS else ''}",
                 [path], "high", "Review unresolved work markers before presenting the repository as production-ready.",
             ))
     return findings
@@ -266,7 +300,7 @@ def _readiness_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) 
     ]
     if characteristics.has_docker_configuration or deployment_paths:
         findings.append(_finding(
-            "deployment_configuration_detected", "repository_quality", "info", "Deployment configuration detected",
+            "deployment_configuration_detected", "release", "info", "Deployment configuration detected",
             "The bounded repository tree contains recognizable deployment or container configuration.",
             deployment_paths or [path for path in snapshot.files if PurePosixPath(path).name.lower() == "dockerfile"], "high", "Keep deployment instructions and environment requirements documented.",
         ))
@@ -275,14 +309,14 @@ def _readiness_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) 
 
 def _structure_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> list[Finding]:
     findings = []
-    deep_paths = [path for path in snapshot.files if len(path.split("/")) >= 7]
+    deep_paths = [path for path in snapshot.files if len(path.split("/")) >= DEEP_SOURCE_PATH_PARTS]
     if deep_paths:
         findings.append(_finding(
             "deep_path", "architecture", "low", "Some repository paths are unusually deep",
             "Deep paths can make navigation and ownership harder to understand; this is a structural observation, not a design verdict.",
             deep_paths[:10], "medium", "Review whether deeply nested modules can be grouped by clear responsibility.",
         ))
-    large_files = [path for path, size in snapshot.file_sizes.items() if size > 100_000]
+    large_files = [path for path, size in snapshot.file_sizes.items() if size > LARGE_SOURCE_FILE_BYTES]
     if large_files:
         findings.append(_finding(
             "large_file", "maintainability", "low", "Large files may deserve review",
@@ -295,6 +329,18 @@ def _structure_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) 
             "client_backend_separation", "architecture", "info", "Client and backend areas are separated",
             "Top-level structure contains recognizable client/frontend/mobile and backend/API/server areas.",
             sorted(roots & {"client", "frontend", "mobile", "api", "backend", "server"}), "high", "Document the boundary and communication contract between these areas.",
+        ))
+    if {"api", "backend", "server"} & roots and not {"client", "frontend", "mobile"} & roots:
+        findings.append(_finding(
+            "backend_only_repository", "architecture", "info", "Backend-only structure observed",
+            "The bounded top-level structure contains backend/API areas without a recognizable client/frontend area. This is a structural classification, not a runtime conclusion.",
+            sorted(roots & {"api", "backend", "server"}), "medium", "Document the service boundary and any external clients that are maintained elsewhere.",
+        ))
+    if {"client", "frontend", "mobile"} & roots and not {"api", "backend", "server"} & roots:
+        findings.append(_finding(
+            "frontend_only_repository", "architecture", "info", "Frontend-only structure observed",
+            "The bounded top-level structure contains client/frontend/mobile areas without a recognizable backend area. This is a structural classification, not a runtime conclusion.",
+            sorted(roots & {"client", "frontend", "mobile"}), "medium", "Document the external services or APIs this client depends on.",
         ))
     return findings
 
@@ -374,12 +420,29 @@ def _repository_quality_findings(snapshot: RepositorySnapshot, analysis: Analysi
 def _dependency_findings(snapshot: RepositorySnapshot) -> list[Finding]:
     manifests = [path for path in snapshot.files if PurePosixPath(path).name.lower() in {"package.json", "pubspec.yaml", "requirements.txt", "pyproject.toml", "pom.xml", "build.gradle", "build.gradle.kts", "cargo.toml", "go.mod", "composer.json"}]
     lockfiles = [path for path in snapshot.files if PurePosixPath(path).name.lower() in {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "pubspec.lock", "poetry.lock", "cargo.lock", "go.sum", "composer.lock"}]
+    findings: list[Finding] = []
     if manifests and not lockfiles:
-        return [_finding(
+        findings.append(_finding(
             "lockfile_missing", "dependencies", "low", "Dependency manifest found without a lockfile",
             "A dependency manifest is present, but no recognizable lockfile was found in the bounded tree.", manifests, "medium", "Consider committing the lockfile when reproducible dependency resolution is appropriate.",
-        )]
-    return []
+        ))
+    if len(manifests) > 1:
+        ecosystems = {PurePosixPath(path).name.lower() for path in manifests}
+        findings.append(_finding(
+            "multiple_dependency_manifests", "dependencies", "info", "Multiple dependency manifests detected",
+            "More than one dependency-management manifest is present. This may be intentional for a multi-language or multi-package repository.",
+            manifests, "high", f"Document the ownership and build boundary for: {', '.join(sorted(ecosystems))}.",
+        ))
+    return findings
+
+
+def _finding_sort_key(finding: Finding) -> tuple[int, int, int, str]:
+    return (
+        FINDING_CATEGORY_ORDER.get(finding.category, len(FINDING_CATEGORY_ORDER)),
+        SEVERITY_ORDER.get(finding.severity, len(SEVERITY_ORDER)),
+        CONFIDENCE_ORDER.get(finding.confidence, len(CONFIDENCE_ORDER)),
+        finding.id,
+    )
 
 
 def _finding(
@@ -489,6 +552,42 @@ _GUIDANCE: dict[str, tuple[str, str]] = {
     "purpose_multicomponent_not_observed": (
         "A multi-component claim without matching boundaries can confuse contributors about project layout.",
         "Verify the documented component boundaries against the repository structure.",
+    ),
+    "purpose_authentication_not_observed": (
+        "An unverified authentication claim can create incorrect expectations about access control.",
+        "Review the authentication claim against detected implementation and configuration evidence.",
+    ),
+    "purpose_docker_not_observed": (
+        "An unverified Docker claim can make setup and deployment expectations unclear.",
+        "Review the Docker claim against the bounded repository tree and deployment configuration.",
+    ),
+    "backend_only_repository": (
+        "A backend-only structure helps identify the service boundary, but does not describe runtime consumers.",
+        "Document external clients or dependent systems when they are maintained outside this repository.",
+    ),
+    "frontend_only_repository": (
+        "A frontend-only structure identifies a client boundary, but does not describe the external services it calls.",
+        "Document the external APIs or services required by this client.",
+    ),
+    "setup_instructions_not_detected": (
+        "Missing setup guidance makes local reproduction harder for developers and reviewers.",
+        "Add concise installation and setup steps to the README.",
+    ),
+    "testing_instructions_not_detected": (
+        "Missing testing guidance makes it harder to verify changes consistently.",
+        "Document the commands used to run the repository's tests.",
+    ),
+    "deployment_instructions_not_detected": (
+        "Missing deployment guidance leaves the intended release path unclear.",
+        "Document deployment prerequisites and the supported release process.",
+    ),
+    "architecture_documentation_not_detected": (
+        "Missing architecture guidance makes boundaries and responsibilities harder to discover.",
+        "Add a short architecture or project-structure explanation to the README.",
+    ),
+    "multiple_dependency_manifests": (
+        "Multiple manifests can be intentional, but undocumented boundaries make dependency maintenance harder.",
+        "Document which package or ecosystem owns each manifest and how they are built.",
     ),
     "documentation_verified": (
         "Matching evidence gives users a concrete basis for the documented technology claim.",
