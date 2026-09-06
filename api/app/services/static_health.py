@@ -32,6 +32,21 @@ TODO_PATTERN = re.compile(r"\b(TODO|FIXME|HACK|XXX)\b", re.I)
 LARGE_SOURCE_FILE_BYTES = 100_000
 DEEP_SOURCE_PATH_PARTS = 7
 EXCESSIVE_WORK_MARKERS = 5
+AUTH_BOUNDARY_PATTERN = re.compile(
+    r"(?:@login_required|depends\s*\(\s*get_current_user|permission_classes|before_request|"
+    r"app\.use\s*\([^\n]*auth|middleware[^\n]*auth|require_auth|protect\s*\()",
+    re.I,
+)
+NON_SOURCE_PARTS = {"tests", "test", "docs", "doc", "vendor", "node_modules", "dist", "build", ".dart_tool", "generated"}
+NON_SOURCE_SUFFIXES = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".zip", ".gz", ".tar",
+    ".key", ".pem", ".crt", ".cer", ".der", ".woff", ".woff2", ".ttf", ".otf",
+}
+SOURCE_SUFFIXES = {
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".dart", ".java", ".kt", ".go", ".rs",
+    ".rb", ".php", ".cs", ".swift", ".c", ".cpp", ".h", ".hpp", ".vue", ".html",
+    ".css", ".scss", ".yaml", ".yml", ".toml", ".json", ".xml", ".ini",
+}
 
 FINDING_CATEGORY_ORDER = {
     "security": 0,
@@ -60,7 +75,7 @@ def analyze_codebase_health(snapshot: RepositorySnapshot, analysis: AnalysisRepo
     findings.extend(_structure_findings(snapshot, analysis))
     findings.extend(_architecture_findings(snapshot, analysis))
     findings.extend(_repository_quality_findings(snapshot, analysis))
-    findings.extend(_dependency_findings(snapshot))
+    findings.extend(_dependency_findings(snapshot, analysis))
     findings = sorted(findings, key=_finding_sort_key)
     category_counts = dict(sorted(Counter(finding.category for finding in findings).items()))
     severity_counts = dict(sorted(Counter(finding.severity for finding in findings).items()))
@@ -75,6 +90,8 @@ def _secret_findings(snapshot: RepositorySnapshot) -> list[Finding]:
     findings: list[Finding] = []
     for path, content in _all_inspected_contents(snapshot).items():
         if _is_documentation_path(path):
+            continue
+        if _is_test_certificate_fixture(path):
             continue
         if PRIVATE_KEY_PATTERN.search(content):
             findings.append(_finding(
@@ -187,7 +204,12 @@ def _documentation_findings(snapshot: RepositorySnapshot, analysis: AnalysisRepo
     readme_path = next((path for path in snapshot.file_contents if PurePosixPath(path).name.lower().startswith("readme")), None)
     if readme_path is None:
         return []
-    readme = snapshot.file_contents[readme_path].lower()
+    documentation = {
+        path: content.lower()
+        for path, content in _all_inspected_contents(snapshot).items()
+        if _is_documentation_path(path)
+    }
+    readme = documentation[readme_path]
     detected = {signal.name.lower() for signal in analysis.frameworks + analysis.languages + analysis.databases + analysis.authentication}
     findings = []
     claims = {
@@ -225,7 +247,13 @@ def _documentation_findings(snapshot: RepositorySnapshot, analysis: AnalysisRepo
         ("architecture_documentation_not_detected", ("architecture", "folder structure", "project structure", "api"), "architecture information"),
     ]
     for finding_id, terms, label in checks:
-        if not any(term in readme for term in terms):
+        if finding_id == "deployment_instructions_not_detected" and _is_library_repository(analysis):
+            continue
+        evidence_paths = [
+            path for path, content in documentation.items()
+            if any(term in content for term in terms)
+        ]
+        if not evidence_paths:
             findings.append(_finding(
                 finding_id, "documentation", "low", f"{label.capitalize()} not detected",
                 f"The README does not contain recognizable {label}. This does not prove the information is unavailable elsewhere.",
@@ -251,7 +279,11 @@ def _todo_findings(snapshot: RepositorySnapshot) -> list[Finding]:
 
 
 def _testing_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> list[Finding]:
-    test_paths = [path for path in snapshot.files if any(part.lower() in {"test", "tests", "__tests__"} for part in path.split("/"))]
+    test_paths = [
+        path for path in snapshot.files
+        if any(part.lower() in {"test", "tests", "__tests__"} for part in path.split("/"))
+        and _is_test_evidence_path(path)
+    ]
     if test_paths or analysis.project_characteristics.has_test_directory:
         return [_finding(
             "test_evidence", "testing", "info", "Automated test evidence detected",
@@ -309,14 +341,21 @@ def _readiness_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) 
 
 def _structure_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> list[Finding]:
     findings = []
-    deep_paths = [path for path in snapshot.files if len(path.split("/")) >= DEEP_SOURCE_PATH_PARTS]
+    deep_paths = [
+        path for path in snapshot.files
+        if len(path.split("/")) >= DEEP_SOURCE_PATH_PARTS
+        and _is_maintainability_source_path(path)
+    ]
     if deep_paths:
         findings.append(_finding(
             "deep_path", "architecture", "low", "Some repository paths are unusually deep",
             "Deep paths can make navigation and ownership harder to understand; this is a structural observation, not a design verdict.",
             deep_paths[:10], "medium", "Review whether deeply nested modules can be grouped by clear responsibility.",
         ))
-    large_files = [path for path, size in snapshot.file_sizes.items() if size > LARGE_SOURCE_FILE_BYTES]
+    large_files = [
+        path for path, size in snapshot.file_sizes.items()
+        if size > LARGE_SOURCE_FILE_BYTES and _is_maintainability_source_path(path)
+    ]
     if large_files:
         findings.append(_finding(
             "large_file", "maintainability", "low", "Large files may deserve review",
@@ -347,12 +386,28 @@ def _structure_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) 
 
 def _architecture_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> list[Finding]:
     findings: list[Finding] = []
-    if analysis.api_signals:
-        paths = [path for signal in analysis.api_signals for path in signal.evidence]
+    boundary_signals = [
+        signal for signal in analysis.api_signals
+        if signal.name in {"FastAPI routes", "Express routes", "GraphQL", "OpenAPI/Swagger"}
+    ]
+    if boundary_signals:
+        paths = [path for signal in boundary_signals for path in signal.evidence]
         findings.append(_finding(
             "api_boundary_observed", "architecture", "info", "API boundary evidence detected",
             "Observable route, API, or protocol signals suggest an API boundary; this is not a complete API inventory.",
             [f"{path}: API signal detected" for path in sorted(set(paths))], "high", "Document the exposed boundary and its request/response contract.",
+            affected_paths=paths,
+        ))
+    elif any(signal.name == "HTTP client usage" for signal in analysis.api_signals):
+        paths = [
+            path for signal in analysis.api_signals
+            if signal.name == "HTTP client usage"
+            for path in signal.evidence
+        ]
+        findings.append(_finding(
+            "http_client_usage_observed", "architecture", "info", "HTTP client usage detected",
+            "The repository contains HTTP client usage, but no service API boundary was inferred from that signal alone.",
+            [f"{path}: HTTP client usage detected" for path in sorted(set(paths))], "high", "Review the client integration separately from server route or API-boundary analysis.",
             affected_paths=paths,
         ))
     if analysis.databases:
@@ -363,7 +418,7 @@ def _architecture_findings(snapshot: RepositorySnapshot, analysis: AnalysisRepor
             [f"{path}: database signal detected" for path in sorted(set(paths))], "medium", "Document the data boundary and required connection configuration.",
             affected_paths=paths,
         ))
-    if analysis.authentication:
+    if analysis.authentication and _has_application_auth_boundary(snapshot, analysis):
         paths = [path for signal in analysis.authentication for path in signal.evidence]
         findings.append(_finding(
             "authentication_boundary_observed", "architecture", "info", "Authentication boundary evidence detected",
@@ -371,9 +426,18 @@ def _architecture_findings(snapshot: RepositorySnapshot, analysis: AnalysisRepor
             [f"{path}: authentication signal detected" for path in sorted(set(paths))], "medium", "Document where authentication is applied and how protected boundaries are defined.",
             affected_paths=paths,
         ))
+    elif analysis.authentication:
+        paths = [path for signal in analysis.authentication for path in signal.evidence]
+        findings.append(_finding(
+            "authentication_library_support_observed", "architecture", "info", "Authentication functionality detected",
+            "Authentication-related functionality was detected in bounded source or configuration, but route protection or application middleware evidence was not found. This may represent client or library support.",
+            [f"{path}: authentication functionality detected" for path in sorted(set(paths))], "high", "Review the relevant callers before interpreting this functionality as an application authentication boundary.",
+            affected_paths=paths,
+        ))
     manifest_paths = [
         path for path in snapshot.files
         if PurePosixPath(path).name.lower() in {"package.json", "pubspec.yaml", "pyproject.toml", "requirements.txt", "go.mod", "cargo.toml"}
+        and not _is_documentation_only_path(path)
     ]
     if len(manifest_paths) > 1 and len({PurePosixPath(path).parent for path in manifest_paths}) > 1:
         findings.append(_finding(
@@ -417,11 +481,19 @@ def _repository_quality_findings(snapshot: RepositorySnapshot, analysis: Analysi
     return findings
 
 
-def _dependency_findings(snapshot: RepositorySnapshot) -> list[Finding]:
-    manifests = [path for path in snapshot.files if PurePosixPath(path).name.lower() in {"package.json", "pubspec.yaml", "requirements.txt", "pyproject.toml", "pom.xml", "build.gradle", "build.gradle.kts", "cargo.toml", "go.mod", "composer.json"}]
+def _dependency_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> list[Finding]:
+    manifests = [
+        path for path in snapshot.files
+        if PurePosixPath(path).name.lower() in {
+            "package.json", "pubspec.yaml", "requirements.txt", "pyproject.toml", "pom.xml",
+            "build.gradle", "build.gradle.kts", "cargo.toml", "go.mod", "composer.json",
+            "setup.py", "setup.cfg",
+        }
+        and not _is_documentation_only_path(path)
+    ]
     lockfiles = [path for path in snapshot.files if PurePosixPath(path).name.lower() in {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "pubspec.lock", "poetry.lock", "cargo.lock", "go.sum", "composer.lock"}]
     findings: list[Finding] = []
-    if manifests and not lockfiles:
+    if manifests and not lockfiles and not _is_library_repository(analysis):
         findings.append(_finding(
             "lockfile_missing", "dependencies", "low", "Dependency manifest found without a lockfile",
             "A dependency manifest is present, but no recognizable lockfile was found in the bounded tree.", manifests, "medium", "Consider committing the lockfile when reproducible dependency resolution is appropriate.",
@@ -443,6 +515,22 @@ def _finding_sort_key(finding: Finding) -> tuple[int, int, int, str]:
         CONFIDENCE_ORDER.get(finding.confidence, len(CONFIDENCE_ORDER)),
         finding.id,
     )
+
+
+def _is_library_repository(analysis: AnalysisReport) -> bool:
+    directories = {path.split("/", 1)[0].lower() for path in analysis.structure.notable_paths}
+    package_managers = {signal.name for signal in analysis.package_managers}
+    framework_names = {signal.name for signal in analysis.frameworks}
+    has_app_boundary = bool(
+        framework_names & {"FastAPI", "Django", "Flask", "Express", "Spring", ".NET", "Flutter", "React", "Next.js", "Vue", "Angular"}
+        or directories & {"client", "frontend", "mobile", "api", "backend", "server"}
+        or {signal.name for signal in analysis.api_signals} & {"FastAPI routes", "Express routes", "GraphQL", "OpenAPI/Swagger"}
+    )
+    return bool(directories & {"src", "lib"}) and bool(
+        package_managers & {"Python Packaging", "pip", "npm", "Dart Pub", "Cargo", "Go Modules"}
+    ) and not has_app_boundary
+
+
 
 
 def _finding(
@@ -521,6 +609,10 @@ _GUIDANCE: dict[str, tuple[str, str]] = {
         "An explicit API boundary helps reviewers understand how clients and services communicate.",
         "Document the exposed boundary and its request/response contract.",
     ),
+    "http_client_usage_observed": (
+        "HTTP client usage identifies an outbound integration, not necessarily a server API boundary.",
+        "Document the external service contract separately from server route analysis.",
+    ),
     "database_integration_observed": (
         "A database boundary identifies where persistence and operational configuration enter the system.",
         "Document the data boundary and required connection configuration.",
@@ -528,6 +620,18 @@ _GUIDANCE: dict[str, tuple[str, str]] = {
     "authentication_boundary_observed": (
         "An authentication boundary identifies where access-control behavior must be reviewed carefully.",
         "Document where authentication is applied and how protected boundaries are defined.",
+    ),
+    "authentication_library_support_observed": (
+        "Authentication functionality in a client or library is not the same as an application access-control boundary.",
+        "Review the callers and route protection before treating this as application authentication.",
+    ),
+    "backend_only_repository": (
+        "A backend-only structure helps identify the service boundary, but does not describe runtime consumers.",
+        "Document external clients or dependent systems when they are maintained outside this repository.",
+    ),
+    "frontend_only_repository": (
+        "A frontend-only structure identifies a client boundary, but does not describe the external services it calls.",
+        "Document the external APIs or services required by this client.",
     ),
     "monorepo_structure_observed": (
         "Multiple package areas can increase build and ownership complexity.",
@@ -653,6 +757,39 @@ def _guidance(finding_id: str, fallback_action: str) -> tuple[str, str]:
     if guidance is not None:
         return guidance
     return "This static observation should be reviewed in the context of the repository.", fallback_action
+
+
+def _has_application_auth_boundary(snapshot: RepositorySnapshot, analysis: AnalysisReport) -> bool:
+    if not analysis.api_signals:
+        return False
+    return any(
+        AUTH_BOUNDARY_PATTERN.search(content)
+        for path, content in _all_inspected_contents(snapshot).items()
+        if not _is_documentation_path(path)
+    )
+
+
+def _is_documentation_only_path(path: str) -> bool:
+    return any(part.lower() in {"docs", "doc", "documentation"} for part in PurePosixPath(path).parts[:-1])
+
+
+def _is_test_certificate_fixture(path: str) -> bool:
+    parts = {part.lower() for part in PurePosixPath(path).parts}
+    suffix = PurePosixPath(path).suffix.lower()
+    return bool(parts & {"test", "tests"}) and suffix in {".key", ".pem", ".crt", ".cer", ".der"}
+
+
+def _is_test_evidence_path(path: str) -> bool:
+    pure_path = PurePosixPath(path)
+    return not _is_test_certificate_fixture(path) and pure_path.suffix.lower() not in NON_SOURCE_SUFFIXES
+
+
+def _is_maintainability_source_path(path: str) -> bool:
+    pure_path = PurePosixPath(path)
+    parts = {part.lower() for part in pure_path.parts[:-1]}
+    if parts & NON_SOURCE_PARTS or pure_path.suffix.lower() in NON_SOURCE_SUFFIXES:
+        return False
+    return pure_path.suffix.lower() in SOURCE_SUFFIXES
 
 
 def _is_documentation_path(path: str) -> bool:

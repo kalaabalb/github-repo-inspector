@@ -99,6 +99,15 @@ def _classify_project(analysis: AnalysisReport) -> tuple[list[str], list[str]]:
     has_backend = bool(framework_names & {"FastAPI", "Django", "Flask", "Express", "Spring", ".NET"}) or bool(
         directories & {"api", "backend", "server"}
     ) or bool(api_names & {"FastAPI routes", "Express routes"})
+    has_library_layout = (
+        bool(language_names & {"Python", "JavaScript", "TypeScript", "Dart", "Rust", "Go"})
+        and bool(directories & {"src", "lib"})
+        and bool({signal.name for signal in analysis.package_managers} & {
+            "Python Packaging", "pip", "npm", "Dart Pub", "Cargo", "Go Modules"
+        })
+        and not has_frontend
+        and not has_backend
+    )
 
     # Priority is intentional: full-stack, concrete framework types, then language families.
     if has_frontend and has_backend:
@@ -117,8 +126,15 @@ def _classify_project(analysis: AnalysisReport) -> tuple[list[str], list[str]]:
         classifications.append("Frontend web application")
         basis.append("web frontend framework evidence is present")
     if "Python" in language_names and "Backend/API" not in classifications:
-        classifications.append("Python application")
-        basis.append("Python language evidence is present")
+        if has_library_layout:
+            classifications.append("Python library/package")
+            basis.append("Python packaging manifest and src/lib layout evidence are present without an application boundary")
+        else:
+            classifications.append("Python application")
+            basis.append("Python language evidence is present")
+    elif has_library_layout:
+        classifications.append("Library/package")
+        basis.append("Packaging manifest and src/lib layout evidence are present without an application boundary")
     if not classifications and language_names:
         classifications.append("General software repository")
         basis.append("source-language evidence is present")

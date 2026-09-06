@@ -96,6 +96,19 @@ def test_python_fastapi_classification_preserves_api_evidence() -> None:
     assert report.api.signals == [routes]
 
 
+def test_python_package_layout_is_not_classified_as_a_python_application() -> None:
+    report = build_project_report(
+        analysis_fixture(
+            frameworks=[],
+            languages=[signal("Python", "language", "src/requests/api.py")],
+            package_managers=[signal("Python Packaging", "package_manager", "pyproject.toml")],
+            directories=["src", "tests"],
+        )
+    )
+
+    assert report.overview.primary_classification == "Python library/package"
+
+
 def test_node_express_and_react_classifications() -> None:
     node_report = build_project_report(
         analysis_fixture(

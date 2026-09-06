@@ -255,3 +255,99 @@ def test_readme_usefulness_signals_and_finding_priority_are_deterministic() -> N
         "testing": 4, "documentation": 5, "release": 6, "dependencies": 7,
         "repository_quality": 8,
     }[category])
+
+
+def test_library_auth_support_is_not_reported_as_an_application_auth_boundary() -> None:
+    repository_snapshot = snapshot(
+        ["pyproject.toml", "src/requests/auth.py", "src/requests/api.py", "README.md"],
+        {"README.md": "A Python HTTP library."},
+    )
+    repository_snapshot.source_file_contents = {
+        "src/requests/auth.py": "class AuthBase: pass\ndef basic_auth(authorization=None): pass\n",
+        "src/requests/api.py": "def request(method, url, auth=None): pass\n",
+    }
+    report = analyze_repository(repository_snapshot)
+
+    ids = {finding.id for finding in report.findings}
+    assert "authentication_library_support_observed" in ids
+    assert "authentication_boundary_observed" not in ids
+
+
+def test_library_repository_does_not_get_application_deployment_or_lockfile_absence_findings() -> None:
+    report = analyze_repository(snapshot(
+        ["pyproject.toml", "src/requests/api.py", "README.md"],
+        {"README.md": "A Python HTTP library.", "src/requests/api.py": "def request(url): pass"},
+    ))
+
+    ids = {finding.id for finding in report.findings}
+    assert "deployment_instructions_not_detected" not in ids
+    assert "lockfile_missing" not in ids
+    assert "setup_instructions_not_detected" in ids
+
+
+def test_explicit_route_protection_can_support_an_authentication_boundary() -> None:
+    repository_snapshot = snapshot(
+        ["app/main.py", "README.md"],
+        {"README.md": "An API service."},
+    )
+    repository_snapshot.source_file_contents = {
+        "app/main.py": (
+            "from fastapi import FastAPI\napp = FastAPI()\n"
+            "@app.get('/private')\n@login_required\ndef private(): pass\n"
+        ),
+    }
+    report = analyze_repository(repository_snapshot)
+
+    assert "authentication_boundary_observed" in {finding.id for finding in report.findings}
+
+
+def test_documentation_dependency_manifest_does_not_create_a_monorepo_finding() -> None:
+    report = analyze_repository(snapshot(
+        ["pyproject.toml", "docs/requirements.txt", "src/requests/api.py", "README.md"],
+        {"README.md": "A Python library."},
+    ))
+
+    ids = {finding.id for finding in report.findings}
+    assert "monorepo_structure_observed" not in ids
+    assert "multiple_dependency_manifests" not in ids
+
+
+def test_test_certificate_fixtures_are_not_reported_as_production_secrets() -> None:
+    repository_snapshot = snapshot(
+        ["tests/certs/client.key", "tests/certs/client.pem", "src/config.py"],
+    )
+    repository_snapshot.source_file_contents = {
+        "tests/certs/client.key": "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----",
+        "tests/certs/client.pem": "-----BEGIN CERTIFICATE-----\nfixture\n-----END CERTIFICATE-----",
+        "src/config.py": 'API_KEY = "synthetic-production-secret"',
+    }
+    report = analyze_repository(repository_snapshot)
+
+    secret_findings = [finding for finding in report.findings if finding.id == "potential_secret"]
+    assert [path for finding in secret_findings for path in finding.affected_paths] == ["src/config.py"]
+    assert "synthetic-production-secret" not in report.model_dump_json()
+
+    test_finding = next(finding for finding in report.findings if finding.id == "test_evidence")
+    assert all(not path.endswith((".key", ".pem")) for path in test_finding.evidence)
+
+
+def test_large_binary_and_test_assets_are_excluded_from_large_source_findings() -> None:
+    report = analyze_repository(snapshot(
+        ["src/module.py", "tests/large_fixture.py", "assets/logo.png"],
+        sizes={"src/module.py": 100_001, "tests/large_fixture.py": 500_000, "assets/logo.png": 900_000},
+    ))
+
+    finding = next(finding for finding in report.findings if finding.id == "large_file")
+    assert finding.affected_paths == ["src/module.py"]
+
+
+def test_http_client_usage_is_not_reported_as_a_server_api_boundary() -> None:
+    repository_snapshot = snapshot(
+        ["pyproject.toml", "src/requests/api.py", "README.md"],
+        {"README.md": "A Python HTTP library.", "src/requests/api.py": "import requests\ndef get(url): return requests.get(url)"},
+    )
+    report = analyze_repository(repository_snapshot)
+
+    ids = {finding.id for finding in report.findings}
+    assert "http_client_usage_observed" in ids
+    assert "api_boundary_observed" not in ids
