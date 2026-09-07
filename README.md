@@ -63,5 +63,20 @@ PYTHONPATH=api pytest
 ```bash
 cd client
 flutter pub get
-flutter run
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000
 ```
+
+The client uses the same Flutter codebase for Web, Android, iOS, and desktop.
+`API_BASE_URL` is a compile-time configuration value; it contains no secret.
+Use the local API URL during development and provide the deployed HTTPS API URL
+for a release build, for example:
+
+```bash
+flutter build web --release \
+  --dart-define=API_BASE_URL=https://api.example.com
+```
+
+Browser requests require the FastAPI `CORS_ALLOWED_ORIGINS` setting to contain
+the exact Flutter Web origin. The backend has explicit local development
+origins by default; configure the deployed Web origin in production and do not
+use a wildcard origin.

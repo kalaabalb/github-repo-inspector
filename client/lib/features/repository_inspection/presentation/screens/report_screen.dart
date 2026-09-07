@@ -913,16 +913,19 @@ class _PathList extends StatelessWidget {
   @override
   Widget build(BuildContext context) => items.isEmpty
       ? const Text('None observed.')
-      : Wrap(
-          direction: Axis.vertical,
-          spacing: 5,
+      : Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: items
               .map(
-                (item) => Text(
-                  item,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    color: Color(0xFFFFC978),
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: Text(
+                    item,
+                    softWrap: true,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      color: Color(0xFFFFC978),
+                    ),
                   ),
                 ),
               )

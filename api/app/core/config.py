@@ -2,6 +2,14 @@ from dataclasses import dataclass
 import os
 
 
+def _csv_origins(value: str) -> tuple[str, ...]:
+    return tuple(
+        origin.strip().rstrip("/")
+        for origin in value.split(",")
+        if origin.strip()
+    )
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = os.getenv("APP_NAME", "github-repo-inspector-api")
@@ -16,6 +24,12 @@ class Settings:
     github_max_source_file_bytes: int = 16_384
     github_max_total_source_bytes: int = 131_072
     github_max_source_directories: int = 12
+    cors_allowed_origins: tuple[str, ...] = _csv_origins(
+        os.getenv(
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:3000,http://localhost:5000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:5000,http://127.0.0.1:8080",
+        )
+    )
     gemini_api_key: str | None = os.getenv("GEMINI_API_KEY") or None
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
     gemini_max_output_tokens: int = 1200
