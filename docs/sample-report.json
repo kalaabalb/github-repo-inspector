@@ -1,0 +1,240 @@
+{
+  "repository": {
+    "owner": "kalaabalb",
+    "name": "trail_sg",
+    "full_name": "kalaabalb/trail_sg",
+    "description": null,
+    "html_url": "https://github.com/kalaabalb/trail_sg",
+    "default_branch": "main",
+    "stars": 0,
+    "forks": 0,
+    "primary_language": "Dart"
+  },
+  "overview": {
+    "classifications": [
+      "Library/package"
+    ],
+    "primary_classification": "Library/package",
+    "classification_basis": [
+      "Packaging manifest and src/lib layout evidence are present without an application boundary"
+    ]
+  },
+  "technologies": {
+    "languages": [
+      {
+        "name": "Dart",
+        "category": "language",
+        "evidence": [
+          "example/main.dart",
+          "lib/src/option.dart",
+          "lib/src/promoter.dart",
+          "lib/src/terminal.dart",
+          "lib/trail_sg.dart",
+          "test/trail_test.dart"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "package_managers": [
+      {
+        "name": "Dart Pub",
+        "category": "package_manager",
+        "evidence": [
+          "pubspec.yaml"
+        ]
+      }
+    ]
+  },
+  "architecture": {
+    "observed_structure": [
+      ".idea",
+      "example",
+      "lib",
+      "lib/src",
+      "test"
+    ],
+    "interpretations": [
+      "test directory observed"
+    ]
+  },
+  "api": {
+    "signals": []
+  },
+  "authentication": {
+    "signals": []
+  },
+  "data": {
+    "databases": []
+  },
+  "project_structure": {
+    "important_directories": [
+      ".idea",
+      "example",
+      "lib",
+      "lib/src",
+      "test"
+    ],
+    "important_files": [
+      ".gitignore",
+      "CHANGELOG.md",
+      "LICENSE",
+      "README.md",
+      "analysis_options.yaml",
+      "pubspec.yaml"
+    ],
+    "configuration_files": [
+      ".idea/caches/deviceStreaming.xml",
+      ".idea/libraries/Dart_Packages.xml",
+      ".idea/libraries/Dart_SDK.xml",
+      ".idea/material_theme_project_new.xml",
+      ".idea/misc.xml",
+      ".idea/modules.xml",
+      ".idea/vcs.xml",
+      "analysis_options.yaml",
+      "pubspec.yaml"
+    ],
+    "has_tests": true,
+    "has_docs": false,
+    "has_ci": false,
+    "has_docker": false,
+    "has_environment_example": false
+  },
+  "evidence": [
+    {
+      "name": "Dart",
+      "category": "language",
+      "evidence": [
+        "example/main.dart",
+        "lib/src/option.dart",
+        "lib/src/promoter.dart",
+        "lib/src/terminal.dart",
+        "lib/trail_sg.dart",
+        "test/trail_test.dart"
+      ]
+    },
+    {
+      "name": "Dart Pub",
+      "category": "package_manager",
+      "evidence": [
+        "pubspec.yaml"
+      ]
+    }
+  ],
+  "limitations": {
+    "tree_truncated": false,
+    "paths_truncated": false,
+    "content_truncated": false,
+    "notes": [
+      "Only bounded repository content was inspected; source inspection was selective."
+    ]
+  },
+  "findings": [
+    {
+      "id": "todo_markers",
+      "category": "maintainability",
+      "severity": "low",
+      "title": "1 unresolved-work marker detected",
+      "summary": "TODO, FIXME, HACK, or XXX markers indicate review items; they are not automatically bugs. ",
+      "evidence": [
+        "lib/trail_sg.dart"
+      ],
+      "affected_paths": [
+        "lib/trail_sg.dart"
+      ],
+      "confidence": "high",
+      "recommendation": "Review unresolved work markers before presenting the repository as production-ready.",
+      "why_it_matters": "Unresolved markers can indicate unfinished work or technical debt.",
+      "recommended_action": "Review the markers and resolve or document them before presenting the repository as production-ready."
+    },
+    {
+      "id": "test_evidence",
+      "category": "testing",
+      "severity": "info",
+      "title": "Automated test evidence detected",
+      "summary": "Test directories or test files are present in the inspected repository.",
+      "evidence": [
+        "test/trail_test.dart"
+      ],
+      "affected_paths": [
+        "test/trail_test.dart"
+      ],
+      "confidence": "high",
+      "recommendation": "Keep the test suite maintained as the codebase changes.",
+      "why_it_matters": "Automated test evidence helps reviewers understand where regressions may be checked.",
+      "recommended_action": "Keep the test suite maintained as the codebase changes."
+    },
+    {
+      "id": "architecture_documentation_not_detected",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Architecture information not detected",
+      "summary": "The README does not contain recognizable architecture information. This does not prove the information is unavailable elsewhere.",
+      "evidence": [
+        "README.md"
+      ],
+      "affected_paths": [
+        "README.md"
+      ],
+      "confidence": "medium",
+      "recommendation": "Add concise architecture information for developers who need to run or extend the project.",
+      "why_it_matters": "Missing architecture guidance makes boundaries and responsibilities harder to discover.",
+      "recommended_action": "Add a short architecture or project-structure explanation to the README."
+    },
+    {
+      "id": "testing_instructions_not_detected",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Testing instructions not detected",
+      "summary": "The README does not contain recognizable testing instructions. This does not prove the information is unavailable elsewhere.",
+      "evidence": [
+        "README.md"
+      ],
+      "affected_paths": [
+        "README.md"
+      ],
+      "confidence": "medium",
+      "recommendation": "Add concise testing instructions for developers who need to run or extend the project.",
+      "why_it_matters": "Missing testing guidance makes it harder to verify changes consistently.",
+      "recommended_action": "Document the commands used to run the repository's tests."
+    }
+  ],
+  "health_summary": {
+    "total_findings": 4,
+    "category_counts": {
+      "documentation": 2,
+      "maintainability": 1,
+      "testing": 1
+    },
+    "severity_counts": {
+      "info": 1,
+      "low": 3
+    },
+    "overall": "Static inspection only"
+  },
+  "trust_context": {
+    "verified_detected": [
+      "Repository metadata and bounded file-tree evidence were inspected.",
+      "Technology and structure signals are based on deterministic matching."
+    ],
+    "potential_issues": [
+      "1 unresolved-work marker detected",
+      "Architecture information not detected",
+      "Testing instructions not detected"
+    ],
+    "not_verified": [
+      "Architecture information not detected",
+      "Testing instructions not detected"
+    ],
+    "limitations": [
+      "Only bounded repository content was inspected; source inspection was selective."
+    ],
+    "runtime_status": "Code was not executed."
+  },
+  "source_inspection": {
+    "files_inspected": 7,
+    "files_skipped": 0,
+    "files_truncated": 0,
+    "content_truncated": false,
+    "notes": []
+  }
+}

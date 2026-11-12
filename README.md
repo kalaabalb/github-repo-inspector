@@ -2,6 +2,10 @@
 
 An AI-powered developer tool that will turn a public GitHub repository into an understandable technical report.
 
+[![CI](https://github.com/kalaabalb/github-repo-inspector/actions/workflows/ci.yml/badge.svg)](https://github.com/kalaabalb/github-repo-inspector/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
+
 ## Status
 
 Early foundation and MVP development. GitHub metadata ingestion, bounded source inspection, deterministic repository analysis, and explicit optional AI explanations are implemented. Full repository analysis is not implemented yet.
@@ -52,6 +56,13 @@ uvicorn app.main:app --app-dir api --reload
 
 The health endpoint is available at `http://127.0.0.1:8000/health`.
 
+To start the API in Docker with one command from the repository root:
+
+```bash
+docker build -t github-repo-inspector-api . && \
+  docker run --rm -p 8000:8000 github-repo-inspector-api
+```
+
 Run the backend test with:
 
 ```bash
@@ -80,3 +91,67 @@ Browser requests require the FastAPI `CORS_ALLOWED_ORIGINS` setting to contain
 the exact Flutter Web origin. The backend has explicit local development
 origins by default; configure the deployed Web origin in production and do not
 use a wildcard origin.
+
+## API examples
+
+Start the API locally using the instructions above, then inspect a public
+repository:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/repositories/inspect \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://github.com/kalaabalb/trail_sg"}'
+```
+
+The response is a `ProjectReport` JSON object. For example, the API returns
+these fields (the values below are an excerpt from the generated report shown
+in [the sample output](docs/sample-report.json)):
+
+```json
+{
+  "repository": {
+    "full_name": "kalaabalb/trail_sg",
+    "html_url": "https://github.com/kalaabalb/trail_sg"
+  },
+  "overview": {
+    "classifications": ["Library/package"],
+    "primary_classification": "Library/package"
+  },
+  "health_summary": {
+    "total_findings": 4,
+    "overall": "Static inspection only"
+  },
+  "trust_context": {
+    "runtime_status": "Code was not executed."
+  }
+}
+```
+
+The metadata endpoint is available for a single repository:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/repositories/fastapi/fastapi
+```
+
+The optional explanation endpoint accepts a report produced by `/inspect` and
+returns either a structured explanation or an `available: false` response
+when Gemini is not configured. Inspection itself does not require an AI key.
+
+## Sample generated report
+
+[`docs/sample-report.json`](docs/sample-report.json) is a real, bounded response
+from the running `/api/v1/repositories/inspect` endpoint for
+`https://github.com/kalaabalb/trail_sg`. It is checked in as an example of the
+current API response shape. Repository metadata and findings can change as the
+upstream repository changes; the report is not a promise of current results.
+
+## Roadmap
+
+- [ ] Improve report export and sharing from the Flutter client.
+- [ ] Expand deterministic checks while keeping findings evidence-backed.
+- [ ] Add resilient GitHub API handling and clearer rate-limit recovery.
+- [ ] Improve accessibility and loading/error states across the client.
+- [ ] Document deployment configuration for the API and Flutter Web client.
+
+Contributions and focused feature requests are welcome. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) and the open issues for ways to help.
