@@ -16,6 +16,7 @@ class Settings:
     github_api_base_url: str = "https://api.github.com"
     github_timeout_seconds: float = 10.0
     github_max_tree_paths: int = 2000
+    github_max_config_files: int = 12
     github_max_config_file_bytes: int = 32_768
     github_max_total_config_bytes: int = 131_072
     # Conservative defaults keep source inspection useful without turning the
@@ -24,6 +25,9 @@ class Settings:
     github_max_source_file_bytes: int = 16_384
     github_max_total_source_bytes: int = 131_072
     github_max_source_directories: int = 12
+    github_max_archive_bytes: int = 32 * 1024 * 1024
+    github_max_archive_members: int = 10_000
+    github_max_archive_uncompressed_bytes: int = 256 * 1024 * 1024
     cors_allowed_origins: tuple[str, ...] = _csv_origins(
         os.getenv(
             "CORS_ALLOWED_ORIGINS",

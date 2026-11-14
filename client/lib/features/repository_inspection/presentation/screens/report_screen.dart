@@ -660,11 +660,27 @@ class _EvidenceTile extends StatelessWidget {
   Widget build(BuildContext context) => ExpansionTile(
     tilePadding: EdgeInsets.zero,
     childrenPadding: const EdgeInsets.only(bottom: 10),
-    title: Row(
-      children: [
-        Expanded(child: Text(signal.name)),
-        _Badge(label: signal.category),
-      ],
+    title: LayoutBuilder(
+      builder: (context, constraints) {
+        final badge = _Badge(label: signal.category);
+        if (constraints.maxWidth < 240) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(signal.name, softWrap: true),
+              const SizedBox(height: 4),
+              badge,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: Text(signal.name, softWrap: true)),
+            const SizedBox(width: 8),
+            badge,
+          ],
+        );
+      },
     ),
     subtitle: const Text('View evidence'),
     children: [

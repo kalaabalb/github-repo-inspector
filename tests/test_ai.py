@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_ai_provider, get_repository_service
 from app.main import app
+from app.schemas.analysis import DetectedSignal, Finding
 from app.schemas.ai import AIProjectExplanation
 from app.schemas.report import ProjectReport
 from app.services.ai.gemini import GeminiProvider
@@ -40,6 +41,71 @@ def project_report() -> ProjectReport:
             directories=["app", "tests"],
         )
     )
+
+
+def large_psf_like_report() -> ProjectReport:
+    report = project_report()
+    report.repository.full_name = "psf/requests"
+    report.repository.description = "A mature HTTP library with bounded repository evidence."
+    report.overview.classifications = ["Python library/package"]
+    report.overview.primary_classification = "Python library/package"
+    report.overview.classification_basis = [
+        "Python packaging manifest and src/lib layout evidence are present without an application boundary."
+    ]
+    signals = [
+        DetectedSignal(
+            name=f"signal-{index}",
+            category="language" if index % 2 else "framework",
+            evidence=[f"src/requests/module_{index}.py", f"tests/test_{index}.py"],
+        )
+        for index in range(50)
+    ]
+    report.technologies.languages = signals[:12]
+    report.technologies.frameworks = signals[12:24]
+    report.technologies.package_managers = signals[24:30]
+    report.api.signals = signals[30:36]
+    report.authentication.signals = signals[36:42]
+    report.data.databases = signals[42:48]
+    report.evidence = signals
+    report.project_structure.important_directories = [
+        f"src/requests/subsystem_{index}" for index in range(30)
+    ]
+    report.project_structure.important_files = [
+        f"tests/test_module_{index}.py" for index in range(30)
+    ]
+    report.project_structure.configuration_files = [
+        f"docs/configuration_{index}.toml" for index in range(20)
+    ]
+    report.limitations.notes = [
+        "Only bounded repository content was inspected; source inspection was selective."
+    ] * 12
+    report.trust_context.verified_detected = [
+        "Repository metadata and bounded file-tree evidence were inspected."
+    ] * 12
+    report.trust_context.potential_issues = [f"Finding title {index}" for index in range(20)]
+    report.trust_context.not_verified = [f"Documentation observation {index}" for index in range(20)]
+    report.trust_context.limitations = list(report.limitations.notes)
+    report.source_inspection.notes = [
+        "Only bounded repository content was inspected; source inspection was selective.",
+        "Skipped source files because of inspection limits.",
+    ] * 8
+    report.findings = [
+        Finding(
+            id=f"finding_{index}",
+            category="maintainability",
+            severity="medium",
+            title=f"Finding title {index}",
+            summary="A repository-derived finding summary that is intentionally verbose. " * 8,
+            evidence=[f"src/requests/module_{index}.py"] * 8,
+            affected_paths=[f"src/requests/module_{index}.py"] * 8,
+            confidence="high",
+            recommendation="Review this deterministic observation and keep the repository guidance current. " * 8,
+            why_it_matters="This explains why the observation matters to maintainers. " * 8,
+            recommended_action="Review the affected path and document the result. " * 8,
+        )
+        for index in range(30)
+    ]
+    return report
 
 
 class FakeProvider:
@@ -151,6 +217,41 @@ def test_compact_input_preserves_facts_and_limits_prompt() -> None:
     assert compact["authentication"]["signals"][0]["name"] == "JWT"
     assert "source code" not in prompt.lower()
     assert len(prompt) <= MAX_PROMPT_CHARS
+
+
+def test_large_psf_like_report_is_compacted_under_prompt_budget() -> None:
+    report = large_psf_like_report()
+    compact = compact_report(report)
+    prompt = build_explanation_prompt(report)
+
+    assert len(prompt) <= MAX_PROMPT_CHARS
+    assert compact["repository"]["full_name"] == "psf/requests"
+    assert compact["health_summary"] == report.health_summary.model_dump()
+    assert compact["technologies"]["languages"][0]["evidence"]
+    assert compact["findings"][0]["severity"] == "medium"
+    assert compact["findings"][0]["category"] == "maintainability"
+    assert compact["findings"][0]["confidence"] == "high"
+    assert "evidence" not in compact
+    assert "limitations" not in compact["trust_context"]
+
+
+def test_compact_input_bounds_repository_derived_text() -> None:
+    report = large_psf_like_report()
+    compact = compact_report(report)
+
+    assert all(
+        len(evidence) <= 160
+        for signal in compact["technologies"]["languages"]
+        for evidence in signal["evidence"]
+    )
+    assert len(compact["findings"][0]["summary"]) <= 320
+    assert len(compact["findings"][0]["recommendation"]) <= 240
+    assert len(compact["findings"][0]["affected_paths"][0]) <= 160
+    assert all(len(note) <= 240 for note in compact["limitations"]["notes"])
+    assert all(len(note) <= 240 for note in compact["source_inspection"]["notes"])
+    assert compact["source_inspection"]["notes"] == [
+        "Skipped source files because of inspection limits."
+    ]
 
 
 def test_ai_input_contains_source_summary_but_not_source_content() -> None:

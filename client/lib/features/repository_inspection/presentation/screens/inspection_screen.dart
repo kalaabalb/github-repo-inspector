@@ -146,9 +146,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
 class _BrandMark extends StatelessWidget {
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Container(
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final icon = Container(
         width: 38,
         height: 38,
         decoration: BoxDecoration(
@@ -156,15 +156,24 @@ class _BrandMark extends StatelessWidget {
           borderRadius: BorderRadius.circular(9),
         ),
         child: const Icon(Icons.account_tree_rounded, color: Colors.black),
-      ),
-      const SizedBox(width: 12),
-      Text(
+      );
+      final label = Text(
         'GITHUB REPO INSPECTOR',
+        softWrap: true,
         style: Theme.of(
           context,
         ).textTheme.labelLarge?.copyWith(letterSpacing: 1.2),
-      ),
-    ],
+      );
+
+      if (constraints.maxWidth < 320) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [icon, const SizedBox(height: 10), label],
+        );
+      }
+
+      return Row(children: [icon, const SizedBox(width: 12), label]);
+    },
   );
 }
 

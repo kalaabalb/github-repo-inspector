@@ -4,17 +4,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.repositories import router as repositories_router
 from app.core.config import settings
 
-app = FastAPI(title=settings.app_name)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=list(settings.cors_allowed_origins),
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type"],
-)
-app.include_router(repositories_router)
+def create_app(app_settings=settings) -> FastAPI:
+    application = FastAPI(title=app_settings.app_name)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(app_settings.cors_allowed_origins),
+        allow_origin_regex=r"^https?://localhost:\d+$",
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type"],
+    )
+    application.include_router(repositories_router)
+
+    @application.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "service": app_settings.app_name}
+
+    return application
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": settings.app_name}
+app = create_app()

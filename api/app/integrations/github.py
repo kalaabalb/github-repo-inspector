@@ -1,13 +1,42 @@
-import base64
-from typing import Any
+import logging
+import posixpath
+import tarfile
+import tempfile
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable, Literal
 from pathlib import PurePosixPath
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
 from app.core.config import settings
 from app.schemas.analysis import AnalysisLimitations, RepositorySnapshot
 from app.schemas.repository import RepositoryMetadata
+
+logger = logging.getLogger(__name__)
+
+
+EndpointCategory = Literal[
+    "repository metadata",
+    "repository tree",
+    "configuration file",
+    "source file",
+    "repository archive",
+]
+_TRUSTED_ARCHIVE_HOSTS = {"api.github.com", "github.com", "codeload.github.com"}
+_SAFE_RATE_LIMIT_HEADERS = (
+    "x-ratelimit-limit",
+    "x-ratelimit-remaining",
+    "x-ratelimit-reset",
+    "retry-after",
+)
+
+
+@dataclass(frozen=True)
+class GitHubRateLimitDetails:
+    endpoint_category: EndpointCategory
+    status_code: int
+    headers: dict[str, str]
 
 
 class GitHubRepositoryNotFoundError(Exception):
@@ -17,6 +46,13 @@ class GitHubRepositoryNotFoundError(Exception):
 class GitHubRateLimitError(Exception):
     """Raised when GitHub rejects a request because of rate limiting."""
 
+    def __init__(self, details: GitHubRateLimitDetails | None = None) -> None:
+        self.details = details
+        self.endpoint_category = details.endpoint_category if details else None
+        self.status_code = details.status_code if details else None
+        self.rate_limit_headers = details.headers if details else {}
+        super().__init__("GitHub API rate limit reached")
+
 
 class GitHubAPIError(Exception):
     """Raised for an unexpected GitHub API response."""
@@ -24,6 +60,10 @@ class GitHubAPIError(Exception):
 
 class GitHubNetworkError(Exception):
     """Raised when GitHub cannot be reached."""
+
+
+class _ArchiveContentSkipped(Exception):
+    """Raised when a selected archive member exceeds a content bound."""
 
 
 class GitHubClient:
@@ -43,7 +83,7 @@ class GitHubClient:
             raise GitHubRepositoryNotFoundError
 
         if _is_rate_limited(response):
-            raise GitHubRateLimitError
+            raise _rate_limit_error(response, "repository metadata")
 
         if response.is_error:
             raise GitHubAPIError
@@ -56,39 +96,73 @@ class GitHubClient:
     async def get_repository_snapshot(
         self, metadata: RepositoryMetadata
     ) -> RepositorySnapshot:
-        branch = quote(metadata.default_branch, safe="")
-        endpoint = (
-            f"{settings.github_api_base_url}/repos/{metadata.full_name}"
-            f"/git/trees/{branch}?recursive=1"
-        )
-
         try:
             async with httpx.AsyncClient(timeout=settings.github_timeout_seconds) as client:
-                response = await client.get(
+                with tempfile.SpooledTemporaryFile(
+                    max_size=settings.github_max_archive_bytes
+                ) as archive_file:
+                    await self._download_archive(client, metadata, archive_file)
+                    return await self._snapshot_from_archive(archive_file, metadata)
+        except (GitHubRepositoryNotFoundError, GitHubRateLimitError, GitHubAPIError):
+            raise
+        except httpx.RequestError as exc:
+            raise GitHubNetworkError from exc
+
+    async def _download_archive(
+        self,
+        client: httpx.AsyncClient,
+        metadata: RepositoryMetadata,
+        destination: Any,
+    ) -> None:
+        endpoint = (
+            f"{settings.github_api_base_url}/repos/{metadata.full_name}"
+            f"/tarball/{quote(metadata.default_branch, safe='')}"
+        )
+        for _ in range(3):
+            try:
+                async with client.stream(
+                    "GET",
                     endpoint,
                     headers={"Accept": "application/vnd.github+json"},
-                )
-                if _is_empty_repository(response):
-                    return RepositorySnapshot(
-                        metadata=metadata,
-                        limitations=AnalysisLimitations(
-                            tree_truncated=False,
-                            paths_truncated=False,
-                            content_truncated=False,
-                            notes=[
-                                "The repository has no commit tree to inspect.",
-                                "Only bounded repository content was inspected.",
-                            ],
-                        ),
-                    )
-                _raise_for_github_response(response)
-                tree_payload = response.json()
-                entries = _tree_entries(tree_payload)
-                tree_truncated = bool(tree_payload.get("truncated", False))
+                    follow_redirects=False,
+                ) as response:
+                    if 300 <= response.status_code < 400:
+                        location = response.headers.get("location")
+                        endpoint = _trusted_archive_redirect(endpoint, location)
+                        continue
+
+                    _raise_for_github_response(response, "repository archive")
+                    content_length = response.headers.get("content-length")
+                    if content_length is not None:
+                        try:
+                            if int(content_length) > settings.github_max_archive_bytes:
+                                raise GitHubAPIError
+                        except ValueError as exc:
+                            raise GitHubAPIError from exc
+
+                    total_bytes = 0
+                    async for chunk in response.aiter_bytes():
+                        total_bytes += len(chunk)
+                        if total_bytes > settings.github_max_archive_bytes:
+                            raise GitHubAPIError
+                        destination.write(chunk)
+                    destination.seek(0)
+                    return
+            except (GitHubRepositoryNotFoundError, GitHubRateLimitError, GitHubAPIError):
+                raise
+            except httpx.RequestError as exc:
+                raise GitHubNetworkError from exc
+        raise GitHubAPIError
+
+    async def _snapshot_from_archive(
+        self, archive_file: Any, metadata: RepositoryMetadata
+    ) -> RepositorySnapshot:
+        try:
+            with tarfile.open(fileobj=archive_file, mode="r:*") as archive:
+                entries, members, scan_notes, archive_truncated = _archive_entries(archive)
                 entries = sorted(entries, key=lambda entry: entry["path"])
                 paths_truncated = len(entries) > settings.github_max_tree_paths
                 entries = entries[: settings.github_max_tree_paths]
-
                 files = [entry["path"] for entry in entries if entry["type"] == "blob"]
                 directories = [entry["path"] for entry in entries if entry["type"] == "tree"]
                 file_sizes = {
@@ -96,8 +170,24 @@ class GitHubClient:
                     for entry in entries
                     if entry["type"] == "blob" and isinstance(entry.get("size"), int)
                 }
+                member_by_path = {
+                    path: member for path, member in members.items() if path in file_sizes
+                }
+
+                async def read_file(path: str, max_bytes: int) -> bytes:
+                    member = member_by_path[path]
+                    if member.size > max_bytes:
+                        raise _ArchiveContentSkipped
+                    extracted = archive.extractfile(member)
+                    if extracted is None:
+                        raise GitHubAPIError
+                    content = extracted.read(max_bytes + 1)
+                    if len(content) > max_bytes:
+                        raise _ArchiveContentSkipped
+                    return content
+
                 file_contents, content_truncated, content_notes = await self._get_config_contents(
-                    client, metadata, files
+                    files, file_sizes, read_file
                 )
                 (
                     source_file_contents,
@@ -106,19 +196,14 @@ class GitHubClient:
                     source_files_truncated,
                     source_content_truncated,
                     source_notes,
-                ) = await self._get_source_contents(
-                    client, metadata, entries
-                )
-        except (GitHubRepositoryNotFoundError, GitHubRateLimitError, GitHubAPIError):
-            raise
-        except httpx.RequestError as exc:
-            raise GitHubNetworkError from exc
+                ) = await self._get_source_contents(entries, read_file)
+        except (tarfile.TarError, EOFError, OSError, KeyError) as exc:
+            raise GitHubAPIError from exc
 
-        notes = list(content_notes)
+        notes = list(scan_notes)
+        notes.extend(content_notes)
         notes.extend(source_notes)
         notes.append("Only bounded repository content was inspected; source inspection was selective.")
-        if tree_truncated:
-            notes.append("GitHub marked the repository tree as truncated.")
         if paths_truncated:
             notes.append(f"Only the first {settings.github_max_tree_paths} tree paths were analyzed.")
         return RepositorySnapshot(
@@ -134,72 +219,77 @@ class GitHubClient:
             source_limitation_notes=source_notes,
             file_sizes=file_sizes,
             limitations=AnalysisLimitations(
-                tree_truncated=tree_truncated,
-                paths_truncated=paths_truncated,
-                content_truncated=content_truncated or source_content_truncated,
+                tree_truncated=False,
+                paths_truncated=paths_truncated or archive_truncated,
+                content_truncated=content_truncated or source_content_truncated or archive_truncated,
                 notes=notes,
             ),
         )
 
     async def _get_config_contents(
         self,
-        client: httpx.AsyncClient,
-        metadata: RepositoryMetadata,
         files: list[str],
+        file_sizes: dict[str, int],
+        read_file: Callable[[str, int], Awaitable[bytes]],
     ) -> tuple[dict[str, str], bool, list[str]]:
         contents: dict[str, str] = {}
         notes: list[str] = []
         total_bytes = 0
         content_truncated = False
+        fetched_files = 0
         for path in files:
             if not _is_relevant_config(path):
                 continue
+            if fetched_files >= settings.github_max_config_files:
+                content_truncated = True
+                notes.append("The configuration file request limit was reached.")
+                break
             if total_bytes >= settings.github_max_total_config_bytes:
                 content_truncated = True
                 notes.append("The configuration content limit was reached.")
                 break
 
-            encoded_path = quote(path, safe="")
-            endpoint = (
-                f"{settings.github_api_base_url}/repos/{metadata.full_name}"
-                f"/contents/{encoded_path}?ref={quote(metadata.default_branch, safe='')}"
-            )
+            tree_size = file_sizes.get(path)
+            if (
+                isinstance(tree_size, int)
+                and total_bytes + tree_size > settings.github_max_total_config_bytes
+            ):
+                content_truncated = True
+                notes.append(f"Skipped configuration file over the total size limit: {path}")
+                continue
+
             try:
-                response = await client.get(
-                    endpoint,
-                    headers={"Accept": "application/vnd.github+json"},
-                )
-                _raise_for_github_response(response)
-                payload = response.json()
-                size = payload.get("size", 0) if isinstance(payload, dict) else 0
-                if not isinstance(size, int) or size > settings.github_max_config_file_bytes:
+                fetched_files += 1
+                if (
+                    path in file_sizes
+                    and file_sizes[path] > settings.github_max_config_file_bytes
+                ):
                     content_truncated = True
                     notes.append(f"Skipped configuration file over the size limit: {path}")
                     continue
-                encoding = payload.get("encoding") if isinstance(payload, dict) else None
-                encoded_content = payload.get("content") if isinstance(payload, dict) else None
-                if encoding != "base64" or not isinstance(encoded_content, str):
-                    raise GitHubAPIError
-                decoded = base64.b64decode("".join(encoded_content.split()), validate=True)
+                decoded = await read_file(path, settings.github_max_config_file_bytes)
                 if total_bytes + len(decoded) > settings.github_max_total_config_bytes:
                     content_truncated = True
                     notes.append(f"Skipped configuration file over the total size limit: {path}")
                     continue
-                contents[path] = decoded.decode("utf-8")
+                try:
+                    contents[path] = decoded.decode("utf-8")
+                except UnicodeDecodeError:
+                    content_truncated = True
+                    notes.append(f"Skipped binary configuration file: {path}")
+                    continue
                 total_bytes += len(decoded)
+            except _ArchiveContentSkipped:
+                content_truncated = True
+                notes.append(f"Skipped configuration file over the size limit: {path}")
             except (GitHubRepositoryNotFoundError, GitHubRateLimitError, GitHubAPIError):
                 raise
-            except (httpx.RequestError, UnicodeDecodeError, ValueError) as exc:
-                if isinstance(exc, httpx.RequestError):
-                    raise GitHubNetworkError from exc
-                raise GitHubAPIError from exc
         return contents, content_truncated, notes
 
     async def _get_source_contents(
         self,
-        client: httpx.AsyncClient,
-        metadata: RepositoryMetadata,
         entries: list[dict[str, Any]],
+        read_file: Callable[[str, int], Awaitable[bytes]],
     ) -> tuple[dict[str, str], list[str], list[str], list[str], bool, list[str]]:
         candidates = _select_source_files(entries)
         contents: dict[str, str] = {}
@@ -231,47 +321,28 @@ class GitHubClient:
                 source_content_truncated = True
                 continue
 
-            endpoint = (
-                f"{settings.github_api_base_url}/repos/{metadata.full_name}"
-                f"/contents/{quote(path, safe='')}?ref={quote(metadata.default_branch, safe='')}"
-            )
             try:
-                response = await client.get(
-                    endpoint,
-                    headers={"Accept": "application/vnd.github+json"},
-                )
-                _raise_for_github_response(response)
-                payload = response.json()
-                payload_size = payload.get("size") if isinstance(payload, dict) else None
-                if isinstance(payload_size, int) and payload_size > settings.github_max_source_file_bytes:
-                    truncated.append(path)
-                    source_content_truncated = True
-                    notes.append(f"Skipped source file over the per-file limit: {path}")
-                    continue
-                encoding = payload.get("encoding") if isinstance(payload, dict) else None
-                encoded_content = payload.get("content") if isinstance(payload, dict) else None
-                if encoding != "base64" or not isinstance(encoded_content, str):
-                    raise GitHubAPIError
-                decoded = base64.b64decode("".join(encoded_content.split()), validate=True)
-                if len(decoded) > settings.github_max_source_file_bytes:
-                    truncated.append(path)
-                    source_content_truncated = True
-                    notes.append(f"Skipped source file over the per-file limit: {path}")
-                    continue
+                decoded = await read_file(path, settings.github_max_source_file_bytes)
                 if total_bytes + len(decoded) > settings.github_max_total_source_bytes:
                     skipped.append(path)
                     source_content_truncated = True
                     continue
-                contents[path] = decoded.decode("utf-8")
+                try:
+                    contents[path] = decoded.decode("utf-8")
+                except UnicodeDecodeError:
+                    skipped.append(path)
+                    source_content_truncated = True
+                    notes.append(f"Skipped binary source file: {path}")
+                    continue
                 inspected.append(path)
                 inspected_directories.add(directory)
                 total_bytes += len(decoded)
+            except _ArchiveContentSkipped:
+                truncated.append(path)
+                source_content_truncated = True
+                notes.append(f"Skipped source file over the per-file limit: {path}")
             except (GitHubRepositoryNotFoundError, GitHubRateLimitError, GitHubAPIError):
                 raise
-            except (httpx.RequestError, UnicodeDecodeError, ValueError) as exc:
-                if isinstance(exc, httpx.RequestError):
-                    raise GitHubNetworkError from exc
-                raise GitHubAPIError from exc
 
         if skipped:
             notes.append(f"Skipped {len(skipped)} source files because of inspection limits.")
@@ -304,23 +375,104 @@ def _metadata_fields(payload: Any) -> dict[str, Any]:
     }
 
 
-def _raise_for_github_response(response: httpx.Response) -> None:
+def _raise_for_github_response(
+    response: httpx.Response, endpoint_category: EndpointCategory
+) -> None:
     if response.status_code == 404:
         raise GitHubRepositoryNotFoundError
     if _is_rate_limited(response):
-        raise GitHubRateLimitError
+        raise _rate_limit_error(response, endpoint_category)
     if response.is_error:
         raise GitHubAPIError
 
 
-def _is_empty_repository(response: httpx.Response) -> bool:
-    if response.status_code != 409:
-        return False
-    try:
-        payload = response.json()
-    except ValueError:
-        return False
-    return isinstance(payload, dict) and "empty" in str(payload.get("message", "")).lower()
+def _trusted_archive_redirect(current_url: str, location: str | None) -> str:
+    if not location:
+        raise GitHubAPIError
+    target = urlsplit(urljoin(current_url, location))
+    if (
+        target.scheme != "https"
+        or target.hostname not in _TRUSTED_ARCHIVE_HOSTS
+        or target.username is not None
+        or target.password is not None
+        or target.port is not None
+    ):
+        raise GitHubAPIError
+    return target.geturl()
+
+
+def _archive_entries(
+    archive: tarfile.TarFile,
+) -> tuple[list[dict[str, Any]], dict[str, tarfile.TarInfo], list[str], bool]:
+    entries: list[dict[str, Any]] = []
+    entry_keys: set[tuple[str, str]] = set()
+    members: dict[str, tarfile.TarInfo] = {}
+    notes: list[str] = []
+    root: str | None = None
+    total_uncompressed = 0
+    truncated = False
+    skipped_link = False
+
+    for member_index, member in enumerate(archive):
+        if member_index >= settings.github_max_archive_members:
+            truncated = True
+            notes.append("The archive member limit was reached.")
+            break
+
+        raw_path = member.name
+        if "\x00" in raw_path or raw_path.startswith("/") or "\\" in raw_path:
+            raise GitHubAPIError
+        parts = raw_path.split("/")
+        if any(part in {"", ".", ".."} for part in parts[:-1]) or ".." in parts:
+            raise GitHubAPIError
+        if root is None and parts:
+            root = parts[0]
+        relative_parts = parts[1:] if root and parts[0] == root else parts
+        relative_path = "/".join(relative_parts).rstrip("/")
+        if not relative_path or posixpath.normpath(relative_path) != relative_path:
+            continue
+        if member.issym() or member.islnk():
+            if not skipped_link:
+                notes.append("Symlink and hardlink archive members were skipped.")
+                skipped_link = True
+            continue
+        if member.isdir():
+            _add_archive_entry(entries, entry_keys, relative_path, "tree")
+            continue
+        if not member.isfile():
+            continue
+
+        if member.size < 0:
+            raise GitHubAPIError
+        total_uncompressed += member.size
+        if total_uncompressed > settings.github_max_archive_uncompressed_bytes:
+            truncated = True
+            notes.append("The archive uncompressed-size limit was reached.")
+            break
+        _add_archive_entry(entries, entry_keys, relative_path, "blob", member.size)
+        for parent in PurePosixPath(relative_path).parents:
+            if str(parent) != ".":
+                _add_archive_entry(entries, entry_keys, str(parent), "tree")
+        members[relative_path] = member
+
+    return entries, members, notes, truncated
+
+
+def _add_archive_entry(
+    entries: list[dict[str, Any]],
+    entry_keys: set[tuple[str, str]],
+    path: str,
+    entry_type: Literal["blob", "tree"],
+    size: int | None = None,
+) -> None:
+    key = (path, entry_type)
+    if key in entry_keys:
+        return
+    entry_keys.add(key)
+    entry = {"path": path, "type": entry_type}
+    if entry_type == "blob" and size is not None:
+        entry["size"] = size
+    entries.append(entry)
 
 
 def _is_rate_limited(response: httpx.Response) -> bool:
@@ -330,21 +482,26 @@ def _is_rate_limited(response: httpx.Response) -> bool:
     )
 
 
-def _tree_entries(payload: Any) -> list[dict[str, Any]]:
-    if not isinstance(payload, dict) or not isinstance(payload.get("tree"), list):
-        raise GitHubAPIError
-    entries: list[dict[str, Any]] = []
-    for entry in payload["tree"]:
-        if (
-            isinstance(entry, dict)
-            and isinstance(entry.get("path"), str)
-            and entry.get("type") in {"blob", "tree"}
-        ):
-            item = {"path": entry["path"], "type": entry["type"]}
-            if isinstance(entry.get("size"), int):
-                item["size"] = entry["size"]
-            entries.append(item)
-    return entries
+def _rate_limit_error(
+    response: httpx.Response, endpoint_category: EndpointCategory
+) -> GitHubRateLimitError:
+    safe_headers = {
+        name: response.headers[name]
+        for name in _SAFE_RATE_LIMIT_HEADERS
+        if name in response.headers
+    }
+    details = GitHubRateLimitDetails(
+        endpoint_category=endpoint_category,
+        status_code=response.status_code,
+        headers=safe_headers,
+    )
+    logger.warning(
+        "GitHub rate limit response: endpoint_category=%s status_code=%s headers=%s",
+        details.endpoint_category,
+        details.status_code,
+        details.headers,
+    )
+    return GitHubRateLimitError(details)
 
 
 def _is_relevant_config(path: str) -> bool:

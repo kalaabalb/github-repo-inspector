@@ -8,7 +8,12 @@ from app.main import app
 from app.schemas.analysis import RepositorySnapshot
 from app.schemas.report import ProjectReport
 from app.schemas.repository import RepositoryMetadata
-from app.services.repositories import RepositoryAnalysisError, RepositoryReference, RepositoryService
+from app.services.repositories import (
+    InspectionCache,
+    RepositoryAnalysisError,
+    RepositoryReference,
+    RepositoryService,
+)
 
 
 client = TestClient(app)
@@ -199,3 +204,105 @@ def test_repository_service_orchestrates_metadata_snapshot_and_analyzer() -> Non
     assert report.repository.full_name == "octocat/Hello-World"
     assert [signal.name for signal in report.technologies.frameworks] == ["Flutter"]
     assert report.limitations.tree_truncated is False
+
+
+def test_inspection_cache_hit_avoids_repeated_repository_work(monkeypatch) -> None:
+    import asyncio
+    import app.services.repositories as repository_module
+
+    class CountingGitHubClient:
+        metadata_calls = 0
+        snapshot_calls = 0
+
+        async def get_repository(self, owner: str, repo: str) -> RepositoryMetadata:
+            self.metadata_calls += 1
+            return build_metadata()
+
+        async def get_repository_snapshot(
+            self, metadata: RepositoryMetadata
+        ) -> RepositorySnapshot:
+            self.snapshot_calls += 1
+            return RepositorySnapshot(metadata=metadata)
+
+    client = CountingGitHubClient()
+    report = ProjectReport.model_construct()
+    monkeypatch.setattr(repository_module, "analyze_repository", lambda snapshot: object())
+    monkeypatch.setattr(repository_module, "build_project_report", lambda analysis: report)
+    service = RepositoryService(client, cache=InspectionCache())
+    reference = RepositoryReference(owner="octocat", repo="Hello-World")
+
+    async def run() -> None:
+        first = await service.inspect(reference)
+        second = await service.inspect(reference)
+        assert first is not second
+
+    asyncio.run(run())
+    assert client.metadata_calls == 1
+    assert client.snapshot_calls == 1
+
+
+def test_inspection_cache_expiration_triggers_fresh_work() -> None:
+    import asyncio
+
+    now = [0.0]
+    cache = InspectionCache(ttl_seconds=10.0, clock=lambda: now[0])
+    report = ProjectReport.model_construct()
+    calls = 0
+
+    async def factory() -> ProjectReport:
+        nonlocal calls
+        calls += 1
+        return report
+
+    async def run() -> None:
+        await cache.get_or_create("octocat/Hello-World", factory)
+        now[0] = 10.0
+        await cache.get_or_create("octocat/Hello-World", factory)
+
+    asyncio.run(run())
+    assert calls == 2
+
+
+def test_inspection_cache_is_bounded_and_keys_do_not_collide() -> None:
+    import asyncio
+
+    cache = InspectionCache(max_entries=2)
+    report = ProjectReport.model_construct()
+    calls = 0
+
+    async def factory() -> ProjectReport:
+        nonlocal calls
+        calls += 1
+        return report
+
+    async def run() -> None:
+        await cache.get_or_create("octocat/one", factory)
+        await cache.get_or_create("octocat/two", factory)
+        await cache.get_or_create("octocat/three", factory)
+
+    asyncio.run(run())
+    assert cache.entry_count == 2
+    assert calls == 3
+
+
+def test_concurrent_identical_inspections_are_deduplicated() -> None:
+    import asyncio
+
+    cache = InspectionCache()
+    report = ProjectReport.model_construct()
+    calls = 0
+
+    async def factory() -> ProjectReport:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.01)
+        return report
+
+    async def run() -> None:
+        await asyncio.gather(
+            cache.get_or_create("octocat/Hello-World", factory),
+            cache.get_or_create("octocat/Hello-World", factory),
+        )
+
+    asyncio.run(run())
+    assert calls == 1

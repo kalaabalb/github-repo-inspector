@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -23,7 +24,7 @@ class HttpRepositoryApi implements RepositoryApi {
     _validateRepositoryUrl(repositoryUrl);
     final response = await _post('/api/v1/repositories/inspect', {
       'url': repositoryUrl,
-    });
+    }, timeout: const Duration(seconds: 45));
     return ProjectReport.fromJson(response);
   }
 
@@ -38,6 +39,7 @@ class HttpRepositoryApi implements RepositoryApi {
   Future<Map<String, dynamic>> _post(
     String path,
     Map<String, dynamic> body,
+    {Duration timeout = const Duration(seconds: 20)}
   ) async {
     try {
       final response = await _client
@@ -46,7 +48,7 @@ class HttpRepositoryApi implements RepositoryApi {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode(body),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(timeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw ApiException(_messageForStatus(response.statusCode));
       }
@@ -57,6 +59,10 @@ class HttpRepositoryApi implements RepositoryApi {
       return decoded;
     } on ApiException {
       rethrow;
+    } on TimeoutException {
+      throw const ApiException(
+        'Inspection is taking longer than expected. Please try again.',
+      );
     } on FormatException {
       throw const ApiException('The server returned an invalid report.');
     } on Exception catch (_) {
