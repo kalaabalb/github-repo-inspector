@@ -26,3 +26,23 @@ jobs:
         env:
           PYTHONPATH: api
         run: python -m pytest
+
+  client-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install client dependencies
+        working-directory: client
+        run: flutter pub get
+      - name: Analyze client
+        working-directory: client
+        run: flutter analyze
+      - name: Run client tests
+        working-directory: client
+        run: flutter test

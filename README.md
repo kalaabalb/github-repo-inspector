@@ -6,6 +6,8 @@ An AI-powered developer tool that will turn a public GitHub repository into an u
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 
+![GitHub Repository Inspector report overview](docs/images/report-overview.png)
+
 ## Status
 
 Early foundation and MVP development. GitHub metadata ingestion, bounded source inspection, deterministic repository analysis, and explicit optional AI explanations are implemented. Full repository analysis is not implemented yet.

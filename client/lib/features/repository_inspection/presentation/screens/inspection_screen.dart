@@ -19,12 +19,21 @@ class _InspectionScreenState extends State<InspectionScreen> {
   void initState() {
     super.initState();
     _urlController = TextEditingController();
+    widget.controller.addListener(_clearInputAfterReset);
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_clearInputAfterReset);
     _urlController.dispose();
     super.dispose();
+  }
+
+  void _clearInputAfterReset() {
+    if (widget.controller.status == InspectionStatus.idle &&
+        _urlController.text.isNotEmpty) {
+      _urlController.clear();
+    }
   }
 
   @override
@@ -165,7 +174,7 @@ class _BrandMark extends StatelessWidget {
         ).textTheme.labelLarge?.copyWith(letterSpacing: 1.2),
       );
 
-      if (constraints.maxWidth < 320) {
+      if (constraints.maxWidth < 400) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [icon, const SizedBox(height: 10), label],

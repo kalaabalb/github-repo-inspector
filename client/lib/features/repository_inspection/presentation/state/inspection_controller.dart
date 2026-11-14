@@ -15,6 +15,14 @@ class InspectionController extends ChangeNotifier {
   AiExplanationResponse? aiResponse;
   String? errorMessage;
 
+  void reset() {
+    status = InspectionStatus.idle;
+    report = null;
+    aiResponse = null;
+    errorMessage = null;
+    notifyListeners();
+  }
+
   void showInputError(String message) {
     status = InspectionStatus.error;
     errorMessage = message;

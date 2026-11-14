@@ -12,154 +12,214 @@ class ReportScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final report = controller.report!;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Technical report'),
-        actions: [
-          IconButton(
-            tooltip: 'Inspect another repository',
-            onPressed: () => controller.report = null,
-            icon: const Icon(Icons.refresh_rounded),
+    return DefaultTabController(
+      length: 6,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Technical report'),
+          actions: [
+            IconButton(
+              tooltip: 'Inspect another repository',
+              onPressed: controller.reset,
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+          bottom: const TabBar(
+            isScrollable: true,
+            tabs: [
+              Tab(text: 'Overview'),
+              Tab(text: 'Health'),
+              Tab(text: 'Stack'),
+              Tab(text: 'Structure'),
+              Tab(text: 'Evidence'),
+              Tab(text: 'AI insights'),
+            ],
           ),
-        ],
-      ),
-      body: AnimatedBuilder(
-        animation: controller,
-        builder: (context, _) => SelectionArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 48),
+        ),
+        body: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => TabBarView(
             children: [
-              _RepositoryHeader(report: report),
-              const SizedBox(height: 18),
-              _ReportSection(
-                title: 'Overview',
-                icon: Icons.dashboard_outlined,
-                child: _Overview(report: report),
+              _ReportPage(
+                report: report,
+                children: [
+                  _RepositoryHeader(report: report),
+                  _ReportSection(
+                    title: 'Overview',
+                    icon: Icons.dashboard_outlined,
+                    child: _Overview(report: report),
+                  ),
+                  _ReportSection(
+                    title: 'Repository purpose',
+                    icon: Icons.description_outlined,
+                    child: _Purpose(report: report),
+                  ),
+                ],
               ),
-              _ReportSection(
-                title: 'Evidence boundaries',
-                icon: Icons.fact_check_outlined,
-                child: _TrustContext(report: report),
+              _ReportPage(
+                report: report,
+                children: [
+                  _ReportSection(
+                    title: 'Evidence boundaries',
+                    icon: Icons.fact_check_outlined,
+                    child: _TrustContext(report: report),
+                  ),
+                  _ReportSection(
+                    title: 'Codebase health',
+                    icon: Icons.health_and_safety_outlined,
+                    child: _Health(report: report),
+                  ),
+                  _ReportSection(
+                    title: 'Security signals',
+                    icon: Icons.shield_outlined,
+                    child: _FindingList(
+                      findings: report.findings
+                          .where((f) => f.category == 'security')
+                          .toList(),
+                      empty: 'No conservative security signals detected.',
+                    ),
+                  ),
+                  _ReportSection(
+                    title: 'Configuration risks',
+                    icon: Icons.settings_outlined,
+                    child: _FindingList(
+                      findings: report.findings
+                          .where((f) => f.category == 'configuration')
+                          .toList(),
+                      empty:
+                          'No configuration risks detected in inspected content.',
+                    ),
+                  ),
+                  _ReportSection(
+                    title: 'Testing & CI',
+                    icon: Icons.fact_check_outlined,
+                    child: _FindingList(
+                      findings: report.findings
+                          .where((f) => f.category == 'testing')
+                          .toList(),
+                      empty: 'No testing or CI findings were emitted.',
+                    ),
+                  ),
+                  _ReportSection(
+                    title: 'Release readiness',
+                    icon: Icons.rocket_launch_outlined,
+                    child: _FindingList(
+                      findings: report.findings
+                          .where(
+                            (f) =>
+                                f.category == 'release' ||
+                                f.category == 'repository_quality',
+                          )
+                          .toList(),
+                      empty:
+                          'No repository-quality readiness findings were emitted.',
+                    ),
+                  ),
+                ],
               ),
-              _ReportSection(
-                title: 'Repository purpose',
-                icon: Icons.description_outlined,
-                child: _Purpose(report: report),
+              _ReportPage(
+                report: report,
+                children: [
+                  _ReportSection(
+                    title: 'Technology stack',
+                    icon: Icons.layers_outlined,
+                    child: _TechnologyStack(report: report),
+                  ),
+                  _ReportSection(
+                    title: 'API',
+                    icon: Icons.api_outlined,
+                    child: _SignalList(
+                      signals: report.apiSignals,
+                      empty: 'No API signals detected.',
+                    ),
+                  ),
+                  _ReportSection(
+                    title: 'Authentication',
+                    icon: Icons.lock_outline_rounded,
+                    child: _SignalList(
+                      signals: report.authenticationSignals,
+                      empty: 'No authentication signals detected.',
+                    ),
+                  ),
+                  _ReportSection(
+                    title: 'Data / databases',
+                    icon: Icons.storage_outlined,
+                    child: _SignalList(
+                      signals: report.databaseSignals,
+                      empty: 'No database signals detected.',
+                    ),
+                  ),
+                ],
               ),
-              _ReportSection(
-                title: 'Source inspection',
-                icon: Icons.code_outlined,
-                child: _SourceInspection(report: report),
+              _ReportPage(
+                report: report,
+                children: [
+                  _ReportSection(
+                    title: 'Architecture assessment',
+                    icon: Icons.account_tree_outlined,
+                    child: _Architecture(report: report),
+                  ),
+                  _ReportSection(
+                    title: 'Project structure',
+                    icon: Icons.folder_open_outlined,
+                    child: _Structure(report: report),
+                  ),
+                  _ReportSection(
+                    title: 'Source inspection',
+                    icon: Icons.code_outlined,
+                    child: _SourceInspection(report: report),
+                  ),
+                ],
               ),
-              _ReportSection(
-                title: 'Technology stack',
-                icon: Icons.layers_outlined,
-                child: _TechnologyStack(report: report),
+              _ReportPage(
+                report: report,
+                children: [
+                  _ReportSection(
+                    title: 'Evidence',
+                    icon: Icons.fact_check_outlined,
+                    child: _SignalList(
+                      signals: report.evidence,
+                      empty: 'No deterministic signals detected.',
+                    ),
+                  ),
+                  if (report.limitations.hasLimitations)
+                    _Limitations(report: report),
+                ],
               ),
-              _ReportSection(
-                title: 'Codebase health',
-                icon: Icons.health_and_safety_outlined,
-                child: _Health(report: report),
+              _ReportPage(
+                report: report,
+                children: [
+                  _AiAction(controller: controller),
+                  if (controller.aiResponse != null)
+                    _AiResult(response: controller.aiResponse!),
+                  if (controller.errorMessage != null &&
+                      controller.status != InspectionStatus.error)
+                    _InlineError(message: controller.errorMessage!),
+                ],
               ),
-              _ReportSection(
-                title: 'Architecture assessment',
-                icon: Icons.account_tree_outlined,
-                child: _Architecture(report: report),
-              ),
-              _ReportSection(
-                title: 'Security signals',
-                icon: Icons.shield_outlined,
-                child: _FindingList(
-                  findings: report.findings
-                      .where((finding) => finding.category == 'security')
-                      .toList(),
-                  empty: 'No conservative security signals detected.',
-                ),
-              ),
-              _ReportSection(
-                title: 'Configuration risks',
-                icon: Icons.settings_outlined,
-                child: _FindingList(
-                  findings: report.findings
-                      .where((finding) => finding.category == 'configuration')
-                      .toList(),
-                  empty: 'No configuration risks detected in inspected content.',
-                ),
-              ),
-              _ReportSection(
-                title: 'Testing & CI',
-                icon: Icons.fact_check_outlined,
-                child: _FindingList(
-                  findings: report.findings
-                      .where((finding) => finding.category == 'testing')
-                      .toList(),
-                  empty: 'No testing or CI findings were emitted.',
-                ),
-              ),
-              _ReportSection(
-                title: 'Release readiness',
-                icon: Icons.rocket_launch_outlined,
-                child: _FindingList(
-                  findings: report.findings
-                      .where((finding) =>
-                          finding.category == 'release' ||
-                          finding.category == 'repository_quality')
-                      .toList(),
-                  empty: 'No repository-quality readiness findings were emitted.',
-                ),
-              ),
-              _ReportSection(
-                title: 'API',
-                icon: Icons.api_outlined,
-                child: _SignalList(
-                  signals: report.apiSignals,
-                  empty: 'No API signals detected.',
-                ),
-              ),
-              _ReportSection(
-                title: 'Authentication',
-                icon: Icons.lock_outline_rounded,
-                child: _SignalList(
-                  signals: report.authenticationSignals,
-                  empty: 'No authentication signals detected.',
-                ),
-              ),
-              _ReportSection(
-                title: 'Data / databases',
-                icon: Icons.storage_outlined,
-                child: _SignalList(
-                  signals: report.databaseSignals,
-                  empty: 'No database signals detected.',
-                ),
-              ),
-              _ReportSection(
-                title: 'Project structure',
-                icon: Icons.folder_open_outlined,
-                child: _Structure(report: report),
-              ),
-              _ReportSection(
-                title: 'Evidence',
-                icon: Icons.fact_check_outlined,
-                child: _SignalList(
-                  signals: report.evidence,
-                  empty: 'No deterministic signals detected.',
-                ),
-              ),
-              if (report.limitations.hasLimitations)
-                _Limitations(report: report),
-              const SizedBox(height: 6),
-              _AiAction(controller: controller),
-              if (controller.aiResponse != null)
-                _AiResult(response: controller.aiResponse!),
-              if (controller.errorMessage != null &&
-                  controller.status != InspectionStatus.error)
-                _InlineError(message: controller.errorMessage!),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+class _ReportPage extends StatelessWidget {
+  const _ReportPage({required this.report, required this.children});
+
+  final ProjectReport report;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => SelectionArea(
+    child: ListView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 48),
+      children: [
+        for (final child in children) ...[child, const SizedBox(height: 18)],
+      ],
+    ),
+  );
 }
 
 class _RepositoryHeader extends StatelessWidget {
@@ -249,8 +309,11 @@ class _Purpose extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final findings = report.findings
-        .where((finding) =>
-            finding.category == 'documentation' && finding.id.startsWith('purpose_'))
+        .where(
+          (finding) =>
+              finding.category == 'documentation' &&
+              finding.id.startsWith('purpose_'),
+        )
         .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -260,7 +323,10 @@ class _Purpose extends StatelessWidget {
         _BulletList(items: report.overview.classificationBasis),
         if (findings.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text('Purpose consistency', style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            'Purpose consistency',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           _FindingList(findings: findings, empty: ''),
         ],
       ],
@@ -508,7 +574,8 @@ String _categoryLabel(String category) => category.replaceAll('_', ' ');
 
 String _findingStatus(CodebaseFinding finding) {
   if (finding.category == 'documentation' &&
-      (finding.id.contains('unverified') || finding.id.contains('not_detected'))) {
+      (finding.id.contains('unverified') ||
+          finding.id.contains('not_detected'))) {
     return 'Not verified';
   }
   return finding.severity == 'info' ? 'Verified / detected' : 'Potential';
@@ -885,7 +952,12 @@ class _ReportSection extends StatelessWidget {
                     color: Theme.of(context).colorScheme.primary,
                   ),
                   const SizedBox(width: 9),
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),

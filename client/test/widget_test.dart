@@ -92,25 +92,16 @@ void main() {
     expect(find.text('owner/project'), findsOneWidget);
     expect(find.text('Flutter application'), findsOneWidget);
     expect(find.text('0 stars'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Technology stack'),
-      500,
-      scrollable: find.byType(Scrollable),
-    );
+    await tester.tap(find.text('Stack'));
+    await tester.pumpAndSettle();
     expect(find.text('Technology stack'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Codebase health'),
-      500,
-      scrollable: find.byType(Scrollable),
-    );
+    await tester.tap(find.text('Health'));
+    await tester.pumpAndSettle();
     expect(find.text('Codebase health'), findsOneWidget);
-    expect(find.text('Potential credential exposed'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Evidence'),
-      500,
-      scrollable: find.byType(Scrollable),
-    );
-    expect(find.text('Evidence'), findsOneWidget);
+    expect(find.text('Potential credential exposed'), findsAtLeastNWidgets(1));
+    await tester.tap(find.text('Evidence').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Evidence'), findsNWidgets(2));
     expect(api.inspectCalls, 1);
     expect(api.explainCalls, 0);
   });
@@ -129,6 +120,35 @@ void main() {
     expect(find.textContaining('Exception'), findsNothing);
   });
 
+  testWidgets('narrow report has no overflow and can return to start', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = FakeRepositoryApi();
+    await tester.pumpWidget(RepositoryInspectorApp(api: api));
+    expect(tester.takeException(), isNull, reason: 'landing screen');
+    await tester.enterText(
+      find.byType(TextField),
+      'https://github.com/owner/project',
+    );
+    await tester.tap(find.text('Inspect repository'));
+    await tester.pumpAndSettle();
+    final layoutException = tester.takeException();
+    expect(layoutException, isNull, reason: 'report screen: $layoutException');
+    await tester.tap(find.byTooltip('Inspect another repository'));
+    await tester.pumpAndSettle();
+    expect(find.text('Inspect the codebase.'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      isEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'AI is called only after explicit action and unavailable state renders',
     (tester) async {
@@ -145,11 +165,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.explainCalls, 0);
 
-      await tester.scrollUntilVisible(
-        find.text('Explain this report with AI'),
-        500,
-        scrollable: find.byType(Scrollable),
-      );
+      await tester.ensureVisible(find.text('AI insights'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('AI insights'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Explain this report with AI'));
       await tester.pumpAndSettle();
       expect(api.explainCalls, 1);
@@ -171,11 +190,10 @@ void main() {
     );
     await tester.tap(find.text('Inspect repository'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Explain this report with AI'),
-      500,
-      scrollable: find.byType(Scrollable),
-    );
+    await tester.ensureVisible(find.text('AI insights'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('AI insights'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explain this report with AI'));
     await tester.pumpAndSettle();
     expect(find.text('Structured explanation'), findsOneWidget);
