@@ -36,6 +36,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.44.9"
           cache: true
       - name: Install client dependencies
         working-directory: client
