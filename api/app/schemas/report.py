@@ -1,6 +1,14 @@
 from pydantic import BaseModel, Field
 
-from app.schemas.analysis import AnalysisLimitations, DetectedSignal, Finding, HealthSummary
+from typing import Literal
+
+from app.schemas.analysis import (
+    AnalysisLimitations,
+    Dependency,
+    DetectedSignal,
+    Finding,
+    HealthSummary,
+)
 
 
 class ReportRepository(BaseModel):
@@ -13,6 +21,8 @@ class ReportRepository(BaseModel):
     stars: int
     forks: int
     primary_language: str | None = None
+    # "local" reports come from a folder or ZIP: stars and forks are unknown (0).
+    source: Literal["github", "local"] = "github"
 
 
 class ReportOverview(BaseModel):
@@ -86,3 +96,4 @@ class ProjectReport(BaseModel):
     health_summary: HealthSummary = Field(default_factory=HealthSummary)
     trust_context: ReportTrustContext = Field(default_factory=ReportTrustContext)
     source_inspection: SourceInspectionSummary = Field(default_factory=SourceInspectionSummary)
+    dependencies: list[Dependency] = Field(default_factory=list)

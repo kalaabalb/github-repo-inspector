@@ -124,13 +124,16 @@ def test_purpose_consistency_reports_unverified_claims_without_calling_them_fals
     ))
 
     purpose_findings = [finding for finding in report.findings if finding.id.startswith("purpose_")]
+    # Claims the README names directly (Flutter, PostgreSQL) are reported once, as README claims.
     assert {finding.id for finding in purpose_findings} == {
-        "purpose_flutter_not_observed",
         "purpose_api_not_observed",
         "purpose_backend_not_observed",
-        "purpose_database_not_observed",
         "purpose_multicomponent_not_observed",
     }
+    unverified_titles = {f.title for f in report.findings if f.id == "documentation_unverified"}
+    assert {"README claim could not be verified: PostgreSQL", "README claim could not be verified: Flutter"} <= unverified_titles
+    # Unverified claims are notes, never problems.
+    assert all(finding.severity == "info" for finding in purpose_findings)
     assert all(
         "not proof that the claim is false" in finding.summary
         for finding in purpose_findings

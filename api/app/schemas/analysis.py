@@ -72,6 +72,16 @@ class RepositorySnapshot(BaseModel):
     limitations: "AnalysisLimitations" = Field(default_factory=lambda: AnalysisLimitations())
 
 
+class Dependency(BaseModel):
+    """A dependency declared in a manifest file (never resolved or installed)."""
+
+    name: str
+    version: str | None = None
+    ecosystem: str
+    kind: Literal["runtime", "dev", "optional"] = "runtime"
+    source: str
+
+
 class DetectedSignal(BaseModel):
     name: str
     category: SignalCategory
@@ -114,3 +124,4 @@ class AnalysisReport(BaseModel):
     source_files_truncated: list[str] = Field(default_factory=list)
     source_content_truncated: bool = False
     source_limitation_notes: list[str] = Field(default_factory=list)
+    dependencies: list[Dependency] = Field(default_factory=list)

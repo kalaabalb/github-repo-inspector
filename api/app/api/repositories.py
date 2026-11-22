@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.dependencies import get_ai_provider, get_repository_service
 from app.integrations.github import (
@@ -19,7 +19,10 @@ from app.services.ai.provider import (
 )
 from app.services.ai.service import AIExplanationService
 from app.schemas.repository import RepositoryInspectRequest, RepositoryMetadata
+from app.core.config import settings
+from app.services.local_source import LocalSourceError, snapshot_from_zip
 from app.services.repositories import (
+    build_report_from_snapshot,
     InvalidRepositoryUrlError,
     RepositoryService,
     RepositoryAnalysisError,
@@ -77,6 +80,29 @@ async def inspect_repository_url(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub API returned an invalid response") from exc
     except RepositoryAnalysisError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Repository analysis failed") from exc
+
+
+@router.post("/inspect-archive", response_model=ProjectReport)
+async def inspect_archive(request: Request, name: str = "archive") -> ProjectReport:
+    """Analyze an uploaded ZIP (raw request body). Works without any GitHub access."""
+    limit = settings.local_max_archive_bytes
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Archive is too large")
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > limit:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Archive is too large")
+        chunks.append(chunk)
+    try:
+        snapshot = snapshot_from_zip(b"".join(chunks), name=name)
+        return build_report_from_snapshot(snapshot)
+    except LocalSourceError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except RepositoryAnalysisError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Archive analysis failed") from exc
 
 
 @router.post("/explain", response_model=AIExplanationResponse)

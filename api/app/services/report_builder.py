@@ -30,6 +30,7 @@ def build_project_report(analysis: AnalysisReport) -> ProjectReport:
             stars=analysis.repository.stargazers_count,
             forks=analysis.repository.forks_count,
             primary_language=_primary_language(analysis),
+            source=analysis.repository.source,
         ),
         overview=ReportOverview(
             classifications=classifications,
@@ -59,6 +60,7 @@ def build_project_report(analysis: AnalysisReport) -> ProjectReport:
         limitations=analysis.limitations,
         findings=analysis.findings,
         health_summary=analysis.health_summary,
+        dependencies=analysis.dependencies,
         trust_context=ReportTrustContext(
             verified_detected=[
                 "Repository metadata and bounded file-tree evidence were inspected.",

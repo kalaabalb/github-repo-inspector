@@ -26,6 +26,10 @@ class Settings:
     github_max_total_source_bytes: int = 131_072
     github_max_source_directories: int = 12
     github_max_archive_bytes: int = 32 * 1024 * 1024
+    # Local folder / ZIP analysis (works offline).
+    local_max_archive_bytes: int = 25 * 1024 * 1024
+    local_max_archive_entries: int = 20_000
+    local_max_walk_files: int = 20_000
     github_max_archive_members: int = 10_000
     github_max_archive_uncompressed_bytes: int = 256 * 1024 * 1024
     cors_allowed_origins: tuple[str, ...] = _csv_origins(

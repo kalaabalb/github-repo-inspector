@@ -197,3 +197,91 @@ def test_source_secret_is_redacted_and_preserves_path_evidence() -> None:
     finding = next(finding for finding in report.findings if finding.id == "potential_secret")
     assert finding.affected_paths == ["lib/config.dart"]
     assert "lib/config.dart" in finding.evidence[0]
+
+
+def _frameworks(report) -> list[str]:
+    return [signal.name for signal in report.frameworks]
+
+
+def test_flutter_is_detected_in_a_monorepo_subdirectory() -> None:
+    report = analyze_repository(
+        repository_snapshot(
+            ["client/pubspec.yaml", "client/lib/main.dart", "api/app/main.py"],
+            ["client", "client/lib", "api"],
+            {"client/pubspec.yaml": "dependencies:\n  flutter:\n    sdk: flutter\n"},
+        )
+    )
+
+    flutter = next(s for s in report.frameworks if s.name == "Flutter")
+    assert flutter.evidence == ["client/lib/", "client/pubspec.yaml"]
+
+
+def test_framework_names_in_plain_strings_are_not_detected() -> None:
+    keyword_list = (
+        'FRAMEWORKS = ["django", "flask", "springframework", "spring-boot", "asp.net"]\n'
+        "# Supports Django, Flask, Spring and ASP.NET projects.\n"
+    )
+    report = analyze_repository(
+        repository_snapshot(
+            ["api/detector.py"],
+            ["api"],
+            {"api/detector.py": keyword_list},
+        )
+    )
+
+    assert _frameworks(report) == []
+
+
+def test_real_django_spring_and_dotnet_usage_is_still_detected() -> None:
+    report = analyze_repository(
+        repository_snapshot(
+            ["web/views.py", "svc/App.java", "net/Program.cs"],
+            ["web", "svc", "net"],
+            {
+                "web/views.py": "from django.http import HttpResponse\n",
+                "svc/App.java": "import org.springframework.boot.SpringApplication;\n",
+                "net/Program.cs": "using Microsoft.AspNetCore.Builder;\n",
+            },
+        )
+    )
+
+    assert {"Django", "Spring", ".NET"} <= set(_frameworks(report))
+
+
+def test_languages_with_several_extensions_are_reported_once() -> None:
+    report = analyze_repository(
+        repository_snapshot(
+            ["app/Main.kt", "build.gradle.kts"],
+            ["app"],
+        )
+    )
+
+    names = [signal.name for signal in report.languages]
+    assert names.count("Kotlin") == 1
+    kotlin = next(s for s in report.languages if s.name == "Kotlin")
+    assert kotlin.evidence == ["app/Main.kt", "build.gradle.kts"]
+
+
+def test_keyword_lists_in_source_do_not_count_as_database_or_auth_evidence() -> None:
+    marker_file = (
+        'DATABASES = {"Redis": ["redis", "ioredis", "aioredis"]}\n'
+        'AUTH = ["jwt", "oauth", "openid"]\n'
+    )
+    report = analyze_repository(
+        repository_snapshot(["api/markers.py"], ["api"], {"api/markers.py": marker_file})
+    )
+
+    assert report.databases == []
+    assert report.authentication == []
+
+
+def test_real_database_usage_in_source_is_still_detected() -> None:
+    report = analyze_repository(
+        repository_snapshot(
+            ["db.py"],
+            [],
+            {"db.py": "import psycopg\nconn = psycopg.connect(DSN)\n"},
+        )
+    )
+
+    assert [signal.name for signal in report.databases] == ["PostgreSQL"]

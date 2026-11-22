@@ -76,7 +76,7 @@ def analyze_codebase_health(snapshot: RepositorySnapshot, analysis: AnalysisRepo
     findings.extend(_architecture_findings(snapshot, analysis))
     findings.extend(_repository_quality_findings(snapshot, analysis))
     findings.extend(_dependency_findings(snapshot, analysis))
-    findings = sorted(findings, key=_finding_sort_key)
+    findings = sorted(_merge_duplicate_findings(_drop_overlapping_claims(findings)), key=_finding_sort_key)
     category_counts = dict(sorted(Counter(finding.category for finding in findings).items()))
     severity_counts = dict(sorted(Counter(finding.severity for finding in findings).items()))
     return findings, HealthSummary(
@@ -84,6 +84,44 @@ def analyze_codebase_health(snapshot: RepositorySnapshot, analysis: AnalysisRepo
         category_counts=category_counts,
         severity_counts=severity_counts,
     )
+
+
+def _drop_overlapping_claims(findings: list[Finding]) -> list[Finding]:
+    """Report an unverified claim once: the specific README claim wins over the generic purpose one."""
+    unverified = {
+        finding.title.split(": ", 1)[1]
+        for finding in findings
+        if finding.id == "documentation_unverified" and ": " in finding.title
+    }
+    databases = {"PostgreSQL", "MongoDB"}
+
+    def overlaps(finding: Finding) -> bool:
+        if not (finding.id.startswith("purpose_") and finding.id.endswith("_not_observed")):
+            return False
+        name = finding.title.split(": ", 1)[1] if ": " in finding.title else ""
+        if name in unverified:
+            return True
+        return finding.id == "purpose_database_not_observed" and bool(unverified & databases)
+
+    return [finding for finding in findings if not overlaps(finding)]
+
+
+def _merge_duplicate_findings(findings: list[Finding]) -> list[Finding]:
+    """Findings that only differ by file are reported once, listing every file."""
+    merged: dict[tuple[str, str, str], Finding] = {}
+    for finding in findings:
+        key = (finding.id, finding.title, finding.severity)
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = finding
+            continue
+        merged[key] = existing.model_copy(
+            update={
+                "evidence": list(dict.fromkeys([*existing.evidence, *finding.evidence])),
+                "affected_paths": list(dict.fromkeys([*existing.affected_paths, *finding.affected_paths])),
+            }
+        )
+    return list(merged.values())
 
 
 def _secret_findings(snapshot: RepositorySnapshot) -> list[Finding]:
@@ -163,7 +201,7 @@ def _purpose_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) ->
             continue
         seen_ids.add(finding_id)
         findings.append(_finding(
-            finding_id, "documentation", "low", f"Purpose claim not verified: {name}",
+            finding_id, "documentation", "info", f"Purpose claim not verified: {name}",
             f"The README or repository description mentions {label}, but matching evidence was not found in the bounded inspection. This is a potential inconsistency, not proof that the claim is false.",
             [readme_path], "medium", "Review the stated purpose against the current implementation and add or update supporting documentation.",
         ))
@@ -171,7 +209,7 @@ def _purpose_findings(snapshot: RepositorySnapshot, analysis: AnalysisReport) ->
         roots & {"client", "frontend", "mobile"} and roots & {"api", "backend", "server"}
     ):
         findings.append(_finding(
-            "purpose_multicomponent_not_observed", "documentation", "low", "Multiple-component purpose not verified",
+            "purpose_multicomponent_not_observed", "documentation", "info", "Multiple-component purpose not verified",
             "The documentation describes multiple application components, but the bounded structure does not show both a client/frontend and backend area.",
             [readme_path], "medium", "Verify the documented component boundaries against the current repository structure.",
         ))
@@ -236,7 +274,7 @@ def _documentation_findings(snapshot: RepositorySnapshot, analysis: AnalysisRepo
             ))
         else:
             findings.append(_finding(
-                "documentation_unverified", "documentation", "low", f"README claim could not be verified: {name}",
+                "documentation_unverified", "documentation", "info", f"README claim could not be verified: {name}",
                 f"The README mentions {name}, but matching evidence was not found in the bounded inspection. This does not prove the claim is false.",
                 [readme_path], "medium", "Review the claim or provide the relevant configuration/dependency evidence.",
             ))

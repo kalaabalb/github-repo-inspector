@@ -11,6 +11,7 @@ from app.schemas.analysis import AnalysisReport
 from app.schemas.report import ProjectReport
 from app.services.analyzer import analyze_repository
 from app.services.report_builder import build_project_report
+from app.schemas.analysis import RepositorySnapshot
 from app.schemas.repository import RepositoryMetadata
 
 
@@ -136,6 +137,15 @@ def _is_github_url(parsed: SplitResult) -> bool:
     )
 
 
+def build_report_from_snapshot(snapshot: RepositorySnapshot) -> ProjectReport:
+    """Run the deterministic analysis on any snapshot (GitHub, folder or ZIP)."""
+    try:
+        analysis = analyze_repository(snapshot)
+        return build_project_report(analysis)
+    except Exception as exc:
+        raise RepositoryAnalysisError from exc
+
+
 class RepositoryService:
     def __init__(
         self,
@@ -158,11 +168,7 @@ class RepositoryService:
     async def _inspect_uncached(self, reference: RepositoryReference) -> ProjectReport:
         metadata = await self.get_metadata(reference)
         snapshot = await self.github_client.get_repository_snapshot(metadata)
-        try:
-            analysis = analyze_repository(snapshot)
-            return build_project_report(analysis)
-        except Exception as exc:
-            raise RepositoryAnalysisError from exc
+        return build_report_from_snapshot(snapshot)
 
 
 _default_inspection_cache = InspectionCache()

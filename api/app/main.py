@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.repositories import router as repositories_router
+from app.api.sample import router as sample_router
 from app.core.config import settings
 
 def create_app(app_settings=settings) -> FastAPI:
@@ -15,6 +16,7 @@ def create_app(app_settings=settings) -> FastAPI:
         allow_headers=["Content-Type"],
     )
     application.include_router(repositories_router)
+    application.include_router(sample_router)
 
     @application.get("/health")
     def health() -> dict[str, str]:

@@ -9,6 +9,7 @@ from app.schemas.analysis import (
     RepositoryCharacteristics,
     RepositorySnapshot,
 )
+from app.services.dependencies import parse_dependencies
 from app.services.static_health import analyze_codebase_health
 
 
@@ -71,7 +72,7 @@ def analyze_repository(snapshot: RepositorySnapshot) -> AnalysisReport:
         }
     )
     detection_contents = {
-        path: text
+        path: _without_keyword_lists(path, text)
         for path, text in contents.items()
         if not PurePosixPath(path).name.lower().startswith("readme")
     }
@@ -94,6 +95,7 @@ def analyze_repository(snapshot: RepositorySnapshot) -> AnalysisReport:
         source_files_truncated=snapshot.source_files_truncated,
         source_content_truncated=snapshot.source_content_truncated,
         source_limitation_notes=snapshot.source_limitation_notes,
+        dependencies=parse_dependencies(snapshot.file_contents),
     )
     findings, health_summary = analyze_codebase_health(snapshot, report)
     report.findings = findings
@@ -101,12 +103,38 @@ def analyze_repository(snapshot: RepositorySnapshot) -> AnalysisReport:
     return report
 
 
+_CODE_SUFFIXES = {
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".dart", ".java", ".kt", ".kts",
+    ".cs", ".go", ".rb", ".php", ".rs", ".swift",
+}
+_QUOTED_STRING = re.compile(r"""(["'])(?:(?!\1).)*\1""")
+
+
+def _without_keyword_lists(path: str, text: str) -> str:
+    """Drop source lines that are just lists of quoted keywords.
+
+    Tools (including this one) keep marker lists such as
+    ``"Redis": ["redis", "ioredis"]``. Those mention technologies without using
+    them, so they must not count as evidence. Manifests and config files are
+    left untouched because dependency lists there are real evidence.
+    """
+    if PurePosixPath(path).suffix.lower() not in _CODE_SUFFIXES:
+        return text
+    kept = [
+        line
+        for line in text.splitlines()
+        if sum(1 for _ in _QUOTED_STRING.finditer(line)) < 3
+    ]
+    return "\n".join(kept)
+
+
 def _detect_languages(files: list[str]) -> list[DetectedSignal]:
-    signals = []
+    by_language: dict[str, list[str]] = {}
     for extension, language in LANGUAGE_EXTENSIONS.items():
         evidence = [path for path in files if PurePosixPath(path).suffix == extension]
         if evidence:
-            signals.append(_signal(language, "language", evidence))
+            by_language.setdefault(language, []).extend(evidence)
+    signals = [_signal(language, "language", paths) for language, paths in by_language.items()]
     return sorted(signals, key=lambda signal: signal.name)
 
 
@@ -121,20 +149,37 @@ def _detect_frameworks(
         {"requirements.txt", "pyproject.toml"},
     )
 
-    if "pubspec.yaml" in files and _contains_any(
-        contents.get("pubspec.yaml", ""), ["flutter:", "sdk: flutter"]
-    ):
-        signals.append(_signal("Flutter", "framework", _existing_evidence(files, "pubspec.yaml", "lib/")))
-    fastapi_evidence = _matching_paths(contents, ["from fastapi", "import fastapi"])
+    flutter_evidence: list[str] = []
+    for path in files:
+        if PurePosixPath(path).name.lower() != "pubspec.yaml":
+            continue
+        if _contains_any(contents.get(path, ""), ["flutter:", "sdk: flutter"]):
+            # Monorepos keep the app in a subdirectory (for example client/).
+            prefix = path[: -len("pubspec.yaml")]
+            flutter_evidence.extend(_existing_evidence(files, path, f"{prefix}lib/"))
+    if flutter_evidence:
+        signals.append(_signal("Flutter", "framework", flutter_evidence))
+    fastapi_evidence = _matching_paths(
+        contents, [r"^\s*(?:from|import)\s+fastapi\b"], regex=True
+    )
     fastapi_evidence.extend(
         path for path, text in python_manifests.items()
         if _dependency_name_present(text, "fastapi")
     )
     if fastapi_evidence:
         signals.append(_signal("FastAPI", "framework", fastapi_evidence))
-    if _content_contains(contents, ["django"]):
-        signals.append(_signal("Django", "framework", _matching_paths(contents, ["django"])))
-    flask_evidence = _matching_paths(contents, ["from flask", "import flask"])
+    django_evidence = _matching_paths(
+        contents, [r"^\s*(?:from|import)\s+django\b"], regex=True
+    )
+    django_evidence.extend(
+        path for path, text in python_manifests.items()
+        if _dependency_name_present(text, "django")
+    )
+    if django_evidence:
+        signals.append(_signal("Django", "framework", django_evidence))
+    flask_evidence = _matching_paths(
+        contents, [r"^\s*(?:from|import)\s+flask\b"], regex=True
+    )
     flask_evidence.extend(
         path for path, text in python_manifests.items()
         if _dependency_name_present(text, "flask")
@@ -151,10 +196,28 @@ def _detect_frameworks(
         signals.append(_signal("Vue", "framework", [package_json[0]]))
     if package_json is not None and _json_dependency_present(package_json[1], "@angular/core"):
         signals.append(_signal("Angular", "framework", [package_json[0]]))
-    if _content_contains(contents, ["springframework", "spring-boot"]):
-        signals.append(_signal("Spring", "framework", _matching_paths(contents, ["spring"])))
-    if _content_contains(contents, ["microsoft.aspnetcore", "asp.net"]):
-        signals.append(_signal(".NET", "framework", _matching_paths(contents, ["asp.net", "aspnetcore"])))
+    # Match real imports and build-file dependencies, not bare words, so that
+    # documentation or keyword lists that merely mention a framework do not count.
+    spring_evidence = _matching_paths(
+        contents,
+        [
+            r"^\s*import\s+(?:static\s+)?org\.springframework\.",
+            r"<artifactId>\s*spring-boot",
+            r"org\.springframework\.boot",
+        ],
+        regex=True,
+        only_suffixes=(".java", ".kt", ".kts", ".gradle", ".xml"),
+    )
+    if spring_evidence:
+        signals.append(_signal("Spring", "framework", spring_evidence))
+    dotnet_evidence = _matching_paths(
+        contents,
+        [r"^\s*using\s+Microsoft\.AspNetCore", r"Include=\"Microsoft\.AspNetCore"],
+        regex=True,
+        only_suffixes=(".cs", ".csproj", ".vb", ".fs"),
+    )
+    if dotnet_evidence:
+        signals.append(_signal(".NET", "framework", dotnet_evidence))
     return sorted(signals, key=lambda signal: signal.name)
 
 
@@ -320,12 +383,17 @@ def _contains_any(text: str, terms: list[str]) -> bool:
 
 
 def _matching_paths(
-    contents: dict[str, str], terms: list[str], regex: bool = False
+    contents: dict[str, str],
+    terms: list[str],
+    regex: bool = False,
+    only_suffixes: tuple[str, ...] | None = None,
 ) -> list[str]:
     matches = []
     for path, text in contents.items():
+        if only_suffixes is not None and not path.lower().endswith(only_suffixes):
+            continue
         if regex:
-            if any(re.search(term, text, re.IGNORECASE) for term in terms):
+            if any(re.search(term, text, re.IGNORECASE | re.MULTILINE) for term in terms):
                 matches.append(path)
         elif _contains_any(text, terms):
             matches.append(path)
