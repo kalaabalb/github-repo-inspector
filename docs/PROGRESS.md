@@ -14,6 +14,7 @@ Handoff note for the current implementation. Product and architecture decisions 
   actions; local sample mode; semantic labels; and narrow-screen layout.
 - Locally bundled Roboto and CanvasKit resources and a service worker cache for offline web loads.
 - CI workflow with API tests, CLI smoke check, Flutter analysis, Flutter tests, and a web build.
+  Latest run `44993368702` passed both `api-tests` and `client-tests` after the implementation push.
 - Real browser screenshots in `docs/images/`; the Summary image is included near the top of
   `README.md`.
 
@@ -31,6 +32,5 @@ Handoff note for the current implementation. Product and architecture decisions 
 
 ## Remaining
 
-- Confirm the final GitHub Actions run after this push.
 - ZIP/folder picking in the Flutter UI and loading saved report files are future client work.
 - A hosted public demo still needs an owner-provided hosting account/domain and GitHub token.
