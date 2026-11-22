@@ -1,23 +1,36 @@
-# Project progress
+# Progress
 
-Updated 2026-11-15.
+Handoff note for the current implementation. Product and architecture decisions are in
+[DECISIONS.md](DECISIONS.md); client behavior and layout guidance are in [DESIGN.md](DESIGN.md).
 
-## Completed
+## Implemented
 
-- Merged PR #1, which adds the MIT license, contribution guide, API CI, Dockerfile, API examples, sample report, and roadmap.
-- Restored and reviewed the follow-up implementation already present in the working tree. The supplied `repo-inspector-patches-after-pr1.zip` was not available under Downloads or elsewhere under `/home/kalaab`.
-- Ran the API suite: 91 tests passed.
-- Ran Flutter analysis with no issues and all 8 client tests passed.
-- Added the stable Flutter client CI job.
-- Fixed the narrow landing screen brand overflow and made the reset action return to the start screen.
-- Added report tabs for Overview, Health, Stack, Structure, Evidence, and AI insights.
-- Built the Web client and checked it against the running API, including the repository report and the 400px layout.
-- Captured real browser screenshots of the landing screen, Overview, Health, and a 400px report view in `docs/images/`.
-- Confirmed the “Inspect another repository” action returns to the start screen and clears the previous URL.
-- Set the requested repository topics and description through `gh` and verified the saved values.
-- GitHub Actions run 43644029442 passed both `api-tests` and `client-tests` on stable Flutter 3.44.9. The first run selected Flutter 3.50.0 and failed analysis because the current Material import is deprecated there; the workflow now pins 3.44.9.
-- Final GitHub Actions run 43644156229 also passed both jobs.
+- PR #1 merged: MIT license, CONTRIBUTING guide, CI, Dockerfile, examples, and roadmap.
+- Bounded GitHub repository inspection with evidence, deterministic health findings, and
+  protections for repository text treated as untrusted input.
+- Offline analysis of local folders and ZIP files, dependency manifest parsing, CLI inspection,
+  Markdown and JSON export, plus bundled sample report endpoints.
+- Flutter client with Summary, Issues, Tech, and Details tabs; plain language; share/export
+  actions; local sample mode; semantic labels; and narrow-screen layout.
+- Locally bundled Roboto and CanvasKit resources and a service worker cache for offline web loads.
+- CI workflow with API tests, CLI smoke check, Flutter analysis, Flutter tests, and a web build.
+- Real browser screenshots in `docs/images/`; the Summary image is included near the top of
+  `README.md`.
 
-## Current status
+## Verified locally
 
-All requested code, screenshots, repository metadata, and the CI workflow are updated. CI passed on the latest code push.
+- API: `PYTHONPATH=api python -m pytest` — 117 passed.
+- Client: `flutter analyze` — no issues; `flutter test` — 29 passed.
+- Release web build: `flutter build web --release --no-web-resources-cdn` succeeded.
+- CLI: local folder Markdown export and bundled sample JSON smoke checks succeeded.
+- Browser: live inspection of `kalaabalb/github-repo-inspector` returned HTTP 200 and rendered
+  its report; “Inspect another repository” returned to the start form.
+- Browser offline check: service worker activated and cached the app shell; reload with network
+  emulation offline still served the app, and the bundled sample report opened.
+- Browser layout checked at 1280×800 and 400×800; no narrow-screen overflow observed.
+
+## Remaining
+
+- Confirm the final GitHub Actions run after this push.
+- ZIP/folder picking in the Flutter UI and loading saved report files are future client work.
+- A hosted public demo still needs an owner-provided hosting account/domain and GitHub token.

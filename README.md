@@ -6,17 +6,46 @@ An AI-powered developer tool that will turn a public GitHub repository into an u
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 
-![GitHub Repository Inspector report overview](docs/images/report-overview.png)
+![GitHub Repository Inspector report summary](docs/images/summary.png)
 
 ## Status
 
-Early foundation and MVP development. GitHub metadata ingestion, bounded source inspection, deterministic repository analysis, and explicit optional AI explanations are implemented. Full repository analysis is not implemented yet.
+Early but working. Implemented: GitHub ingestion, **offline analysis of local folders and ZIP files**, bounded source inspection, deterministic findings, dependency parsing, a command line tool, Markdown/JSON export and optional AI explanations. Not implemented: deep semantic analysis, vulnerability scanning and private repositories (see [Limitations](#limitations)).
 
 ## Current Functionality
 
 The backend accepts a public GitHub repository URL, retrieves repository metadata and bounded tree, configuration, and selected source information, and produces an evidence-backed deterministic analysis report. A separate `/api/v1/repositories/explain` endpoint can optionally send an already-generated compact report to Gemini for structured explanations; inspection itself never consumes AI tokens. Private repositories are not supported, and AI explanations are unavailable until a `GEMINI_API_KEY` is configured.
 
 AI configuration is optional. Set `GEMINI_API_KEY` and, optionally, `GEMINI_MODEL` from the placeholders in `api/.env.example`; never commit real credentials. The AI layer receives structured report data only, not repository source code, and treats repository-derived text as untrusted data.
+
+## Works offline
+
+Everything that does not need GitHub works without internet:
+
+```bash
+cd api
+python -m app.cli inspect ../my-project                 # a local folder -> Markdown on stdout
+python -m app.cli inspect ./project.zip -o report.md    # a ZIP archive -> Markdown file
+python -m app.cli inspect ../my-project -f json -o r.json
+python -m app.cli render r.json                         # saved JSON report -> Markdown
+python -m app.cli sample                                # the bundled sample report
+python -m app.cli inspect --github owner/repo           # needs internet (set GITHUB_TOKEN for rate limits)
+```
+
+The same analysis is available over HTTP: `POST /api/v1/repositories/inspect-archive` takes a ZIP as the raw request body, and `GET /api/v1/sample-report` returns the bundled sample. Local analysis uses the same analyzer and size limits as GitHub analysis. Folders and ZIPs are only read, never extracted to disk, executed or installed; path traversal, symlinks, encrypted entries, oversized archives and archives with too many entries are rejected or skipped. Reports from local analysis are labelled `source: "local"` and have no stars, forks or branch. If GitHub cannot be reached, the CLI says so and points at the offline commands.
+
+## Dependencies
+
+Declared dependencies are parsed from `requirements*.txt`, `pyproject.toml` (PEP 621, Poetry, dependency groups), `package.json`, `pubspec.yaml`, `Cargo.toml`, `go.mod` and `composer.json`, and are reported with ecosystem, version constraint and where they were declared. This is static text parsing: nothing is installed or resolved, and no vulnerability database is queried. `pom.xml` and Gradle dependencies are not parsed yet.
+
+## Limitations
+
+- Analysis is static and bounded by file count, file size and total bytes; anything skipped is listed in the report.
+- Detection is rule-based (imports, manifests, markers). It can miss technologies and can occasionally flag something that is not really used. Findings carry evidence so you can check them.
+- The health score is a heuristic from finding severities, not a measure of quality or security.
+- No vulnerability scanning, license checking, dependency resolution, code execution or type checking.
+- Only public GitHub repositories are supported (not GitLab or Bitbucket).
+- AI explanations are optional, depend on a third party, can be wrong, and only see the structured report, never raw source.
 
 ## Static Codebase Health
 
@@ -141,15 +170,16 @@ when Gemini is not configured. Inspection itself does not require an AI key.
 
 ## Sample generated report
 
-[`docs/sample-report.json`](docs/sample-report.json) is a real, bounded response
-from the running `/api/v1/repositories/inspect` endpoint for
-`https://github.com/kalaabalb/trail_sg`. It is checked in as an example of the
-current API response shape. Repository metadata and findings can change as the
-upstream repository changes; the report is not a promise of current results.
+[`docs/sample-report.json`](docs/sample-report.json) is the real output of
+`python -m app.cli inspect ..` run offline on a local checkout of this repository
+(`source: "local"`). It is also served by `GET /api/v1/sample-report` and is regenerated
+with `scripts/generate_sample.sh`; it is never edited by hand. Findings change as the
+code changes, so it is an example of the report shape, not a promise of current results.
 
 ## Roadmap
 
-- [ ] Improve report export and sharing from the Flutter client.
+- [x] Offline folder/ZIP analysis, command line tool, dependency parsing, Markdown export (API side).
+- [ ] Flutter client: sample/demo mode, open and save reports, Markdown export, copy as JSON.
 - [ ] Expand deterministic checks while keeping findings evidence-backed.
 - [ ] Add resilient GitHub API handling and clearer rate-limit recovery.
 - [ ] Improve accessibility and loading/error states across the client.

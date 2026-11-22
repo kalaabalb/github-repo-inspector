@@ -1,22 +1,27 @@
 {
   "repository": {
-    "owner": "kalaabalb",
-    "name": "trail_sg",
-    "full_name": "kalaabalb/trail_sg",
+    "owner": "local",
+    "name": "github-repo-inspector",
+    "full_name": "local/github-repo-inspector",
     "description": null,
-    "html_url": "https://github.com/kalaabalb/trail_sg",
-    "default_branch": "main",
+    "html_url": "local://github-repo-inspector",
+    "default_branch": "(local)",
     "stars": 0,
     "forks": 0,
-    "primary_language": "Dart"
+    "primary_language": "Dart",
+    "source": "local"
   },
   "overview": {
     "classifications": [
-      "Library/package"
+      "Full-stack application",
+      "Flutter application",
+      "Backend/API"
     ],
-    "primary_classification": "Library/package",
+    "primary_classification": "Full-stack application",
     "classification_basis": [
-      "Packaging manifest and src/lib layout evidence are present without an application boundary"
+      "frontend and backend evidence are both present",
+      "Flutter framework evidence is present",
+      "FastAPI evidence is present"
     ]
   },
   "technologies": {
@@ -25,40 +30,176 @@
         "name": "Dart",
         "category": "language",
         "evidence": [
-          "example/main.dart",
-          "lib/src/option.dart",
-          "lib/src/promoter.dart",
-          "lib/src/terminal.dart",
-          "lib/trail_sg.dart",
-          "test/trail_test.dart"
+          "client/lib/core/config/api_config.dart",
+          "client/lib/core/theme/app_theme.dart",
+          "client/lib/core/widgets/aurora_background.dart",
+          "client/lib/core/widgets/glass_card.dart",
+          "client/lib/core/widgets/responsive_grid.dart",
+          "client/lib/features/repository_inspection/data/models/ai_explanation.dart",
+          "client/lib/features/repository_inspection/data/models/project_report.dart",
+          "client/lib/features/repository_inspection/data/repository_api.dart",
+          "client/lib/features/repository_inspection/data/repository_url.dart",
+          "client/lib/features/repository_inspection/presentation/plain_language.dart",
+          "client/lib/features/repository_inspection/presentation/report_export.dart",
+          "client/lib/features/repository_inspection/presentation/screens/inspection_screen.dart",
+          "client/lib/features/repository_inspection/presentation/screens/report_screen.dart",
+          "client/lib/features/repository_inspection/presentation/state/inspection_controller.dart",
+          "client/lib/features/repository_inspection/presentation/widgets/common.dart",
+          "client/lib/features/repository_inspection/presentation/widgets/report_tabs.dart",
+          "client/lib/features/repository_inspection/presentation/widgets/report_tiles.dart",
+          "client/lib/features/repository_inspection/presentation/widgets/scan_progress.dart",
+          "client/lib/main.dart",
+          "client/test/fixture.dart",
+          "client/test/repository_api_test.dart",
+          "client/test/unit_test.dart",
+          "client/test/widget_test.dart"
+        ]
+      },
+      {
+        "name": "Kotlin",
+        "category": "language",
+        "evidence": [
+          "client/android/app/build.gradle.kts",
+          "client/android/app/src/main/kotlin/com/example/github_repo_inspector/MainActivity.kt",
+          "client/android/build.gradle.kts",
+          "client/android/settings.gradle.kts"
+        ]
+      },
+      {
+        "name": "Python",
+        "category": "language",
+        "evidence": [
+          "api/app/__init__.py",
+          "api/app/api/__init__.py",
+          "api/app/api/dependencies.py",
+          "api/app/api/repositories.py",
+          "api/app/api/sample.py",
+          "api/app/cli.py",
+          "api/app/core/__init__.py",
+          "api/app/core/config.py",
+          "api/app/integrations/__init__.py",
+          "api/app/integrations/github.py",
+          "api/app/main.py",
+          "api/app/schemas/__init__.py",
+          "api/app/schemas/ai.py",
+          "api/app/schemas/analysis.py",
+          "api/app/schemas/report.py",
+          "api/app/schemas/repository.py",
+          "api/app/services/__init__.py",
+          "api/app/services/ai/__init__.py",
+          "api/app/services/ai/gemini.py",
+          "api/app/services/ai/prompts.py",
+          "api/app/services/ai/provider.py",
+          "api/app/services/ai/service.py",
+          "api/app/services/analyzer.py",
+          "api/app/services/dependencies.py",
+          "api/app/services/local_source.py",
+          "api/app/services/markdown_export.py",
+          "api/app/services/report_builder.py",
+          "api/app/services/repositories.py",
+          "api/app/services/static_health.py",
+          "tests/test_ai.py",
+          "tests/test_analyzer.py",
+          "tests/test_dependencies.py",
+          "tests/test_github_ingestion.py",
+          "tests/test_health.py",
+          "tests/test_offline.py",
+          "tests/test_report_builder.py",
+          "tests/test_repositories.py",
+          "tests/test_static_health.py"
+        ]
+      },
+      {
+        "name": "Swift",
+        "category": "language",
+        "evidence": [
+          "client/ios/Runner/AppDelegate.swift",
+          "client/ios/Runner/SceneDelegate.swift",
+          "client/ios/RunnerTests/RunnerTests.swift",
+          "client/macos/Flutter/GeneratedPluginRegistrant.swift",
+          "client/macos/Runner/AppDelegate.swift",
+          "client/macos/Runner/MainFlutterWindow.swift",
+          "client/macos/RunnerTests/RunnerTests.swift"
         ]
       }
     ],
-    "frameworks": [],
+    "frameworks": [
+      {
+        "name": "FastAPI",
+        "category": "framework",
+        "evidence": [
+          "api/app/api/repositories.py",
+          "api/app/api/sample.py",
+          "api/app/main.py",
+          "api/requirements.txt"
+        ]
+      },
+      {
+        "name": "Flutter",
+        "category": "framework",
+        "evidence": [
+          "client/lib/",
+          "client/pubspec.yaml"
+        ]
+      }
+    ],
     "package_managers": [
       {
         "name": "Dart Pub",
         "category": "package_manager",
         "evidence": [
-          "pubspec.yaml"
+          "client/pubspec.yaml"
+        ]
+      },
+      {
+        "name": "Gradle",
+        "category": "package_manager",
+        "evidence": [
+          "client/android/app/build.gradle.kts",
+          "client/android/build.gradle.kts"
+        ]
+      },
+      {
+        "name": "pip",
+        "category": "package_manager",
+        "evidence": [
+          "api/requirements.txt"
         ]
       }
     ]
   },
   "architecture": {
     "observed_structure": [
-      ".idea",
-      "example",
-      "lib",
-      "lib/src",
-      "test"
+      ".github",
+      "api",
+      "api/app/api",
+      "client",
+      "client/android/app/src",
+      "client/lib",
+      "client/test",
+      "docs",
+      "infra",
+      "scripts",
+      "tests"
     ],
     "interpretations": [
+      "API directory observed",
+      "client application directory observed",
+      "documentation directory observed",
       "test directory observed"
     ]
   },
   "api": {
-    "signals": []
+    "signals": [
+      {
+        "name": "FastAPI routes",
+        "category": "api",
+        "evidence": [
+          "api/app/api/repositories.py",
+          "api/app/api/sample.py"
+        ]
+      }
+    ]
   },
   "authentication": {
     "signals": []
@@ -68,78 +209,334 @@
   },
   "project_structure": {
     "important_directories": [
-      ".idea",
-      "example",
-      "lib",
-      "lib/src",
-      "test"
+      ".github",
+      "api",
+      "api/app/api",
+      "client",
+      "client/android/app/src",
+      "client/lib",
+      "client/test",
+      "docs",
+      "infra",
+      "scripts",
+      "tests"
     ],
     "important_files": [
       ".gitignore",
-      "CHANGELOG.md",
+      "CONTRIBUTING.md",
+      "Dockerfile",
       "LICENSE",
-      "README.md",
-      "analysis_options.yaml",
-      "pubspec.yaml"
+      "README.md"
     ],
     "configuration_files": [
-      ".idea/caches/deviceStreaming.xml",
-      ".idea/libraries/Dart_Packages.xml",
-      ".idea/libraries/Dart_SDK.xml",
-      ".idea/material_theme_project_new.xml",
-      ".idea/misc.xml",
-      ".idea/modules.xml",
-      ".idea/vcs.xml",
-      "analysis_options.yaml",
-      "pubspec.yaml"
+      ".github/workflows/ci.yml",
+      "Dockerfile",
+      "api/app/data/sample_report.json",
+      "client/analysis_options.yaml",
+      "client/android/app/src/debug/AndroidManifest.xml",
+      "client/android/app/src/main/AndroidManifest.xml",
+      "client/android/app/src/main/res/drawable-v21/launch_background.xml",
+      "client/android/app/src/main/res/drawable/launch_background.xml",
+      "client/android/app/src/main/res/values-night/styles.xml",
+      "client/android/app/src/main/res/values/styles.xml",
+      "client/android/app/src/profile/AndroidManifest.xml",
+      "client/assets/sample_report.json",
+      "client/ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json",
+      "client/ios/Runner/Assets.xcassets/LaunchImage.imageset/Contents.json",
+      "client/macos/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json",
+      "client/pubspec.yaml",
+      "client/web/manifest.json",
+      "docs/sample-report.json"
     ],
     "has_tests": true,
-    "has_docs": false,
-    "has_ci": false,
-    "has_docker": false,
-    "has_environment_example": false
+    "has_docs": true,
+    "has_ci": true,
+    "has_docker": true,
+    "has_environment_example": true
   },
   "evidence": [
     {
       "name": "Dart",
       "category": "language",
       "evidence": [
-        "example/main.dart",
-        "lib/src/option.dart",
-        "lib/src/promoter.dart",
-        "lib/src/terminal.dart",
-        "lib/trail_sg.dart",
-        "test/trail_test.dart"
+        "client/lib/core/config/api_config.dart",
+        "client/lib/core/theme/app_theme.dart",
+        "client/lib/core/widgets/aurora_background.dart",
+        "client/lib/core/widgets/glass_card.dart",
+        "client/lib/core/widgets/responsive_grid.dart",
+        "client/lib/features/repository_inspection/data/models/ai_explanation.dart",
+        "client/lib/features/repository_inspection/data/models/project_report.dart",
+        "client/lib/features/repository_inspection/data/repository_api.dart",
+        "client/lib/features/repository_inspection/data/repository_url.dart",
+        "client/lib/features/repository_inspection/presentation/plain_language.dart",
+        "client/lib/features/repository_inspection/presentation/report_export.dart",
+        "client/lib/features/repository_inspection/presentation/screens/inspection_screen.dart",
+        "client/lib/features/repository_inspection/presentation/screens/report_screen.dart",
+        "client/lib/features/repository_inspection/presentation/state/inspection_controller.dart",
+        "client/lib/features/repository_inspection/presentation/widgets/common.dart",
+        "client/lib/features/repository_inspection/presentation/widgets/report_tabs.dart",
+        "client/lib/features/repository_inspection/presentation/widgets/report_tiles.dart",
+        "client/lib/features/repository_inspection/presentation/widgets/scan_progress.dart",
+        "client/lib/main.dart",
+        "client/test/fixture.dart",
+        "client/test/repository_api_test.dart",
+        "client/test/unit_test.dart",
+        "client/test/widget_test.dart"
+      ]
+    },
+    {
+      "name": "Kotlin",
+      "category": "language",
+      "evidence": [
+        "client/android/app/build.gradle.kts",
+        "client/android/app/src/main/kotlin/com/example/github_repo_inspector/MainActivity.kt",
+        "client/android/build.gradle.kts",
+        "client/android/settings.gradle.kts"
+      ]
+    },
+    {
+      "name": "Python",
+      "category": "language",
+      "evidence": [
+        "api/app/__init__.py",
+        "api/app/api/__init__.py",
+        "api/app/api/dependencies.py",
+        "api/app/api/repositories.py",
+        "api/app/api/sample.py",
+        "api/app/cli.py",
+        "api/app/core/__init__.py",
+        "api/app/core/config.py",
+        "api/app/integrations/__init__.py",
+        "api/app/integrations/github.py",
+        "api/app/main.py",
+        "api/app/schemas/__init__.py",
+        "api/app/schemas/ai.py",
+        "api/app/schemas/analysis.py",
+        "api/app/schemas/report.py",
+        "api/app/schemas/repository.py",
+        "api/app/services/__init__.py",
+        "api/app/services/ai/__init__.py",
+        "api/app/services/ai/gemini.py",
+        "api/app/services/ai/prompts.py",
+        "api/app/services/ai/provider.py",
+        "api/app/services/ai/service.py",
+        "api/app/services/analyzer.py",
+        "api/app/services/dependencies.py",
+        "api/app/services/local_source.py",
+        "api/app/services/markdown_export.py",
+        "api/app/services/report_builder.py",
+        "api/app/services/repositories.py",
+        "api/app/services/static_health.py",
+        "tests/test_ai.py",
+        "tests/test_analyzer.py",
+        "tests/test_dependencies.py",
+        "tests/test_github_ingestion.py",
+        "tests/test_health.py",
+        "tests/test_offline.py",
+        "tests/test_report_builder.py",
+        "tests/test_repositories.py",
+        "tests/test_static_health.py"
+      ]
+    },
+    {
+      "name": "Swift",
+      "category": "language",
+      "evidence": [
+        "client/ios/Runner/AppDelegate.swift",
+        "client/ios/Runner/SceneDelegate.swift",
+        "client/ios/RunnerTests/RunnerTests.swift",
+        "client/macos/Flutter/GeneratedPluginRegistrant.swift",
+        "client/macos/Runner/AppDelegate.swift",
+        "client/macos/Runner/MainFlutterWindow.swift",
+        "client/macos/RunnerTests/RunnerTests.swift"
+      ]
+    },
+    {
+      "name": "FastAPI",
+      "category": "framework",
+      "evidence": [
+        "api/app/api/repositories.py",
+        "api/app/api/sample.py",
+        "api/app/main.py",
+        "api/requirements.txt"
+      ]
+    },
+    {
+      "name": "Flutter",
+      "category": "framework",
+      "evidence": [
+        "client/lib/",
+        "client/pubspec.yaml"
       ]
     },
     {
       "name": "Dart Pub",
       "category": "package_manager",
       "evidence": [
-        "pubspec.yaml"
+        "client/pubspec.yaml"
+      ]
+    },
+    {
+      "name": "Gradle",
+      "category": "package_manager",
+      "evidence": [
+        "client/android/app/build.gradle.kts",
+        "client/android/build.gradle.kts"
+      ]
+    },
+    {
+      "name": "pip",
+      "category": "package_manager",
+      "evidence": [
+        "api/requirements.txt"
+      ]
+    },
+    {
+      "name": "FastAPI routes",
+      "category": "api",
+      "evidence": [
+        "api/app/api/repositories.py",
+        "api/app/api/sample.py"
       ]
     }
   ],
   "limitations": {
     "tree_truncated": false,
     "paths_truncated": false,
-    "content_truncated": false,
+    "content_truncated": true,
     "notes": [
-      "Only bounded repository content was inspected; source inspection was selective."
+      "Skipped source file over the per-file limit: api/app/services/analyzer.py",
+      "Skipped source file over the per-file limit: api/app/services/static_health.py",
+      "Skipped source file over the per-file limit: api/app/data/sample_report.json",
+      "Skipped 56 source files because of inspection limits or read errors.",
+      "3 source files exceeded the per-file limit.",
+      "Analyzed a local folder; GitHub metadata (stars, forks, default branch) is not available.",
+      "Only bounded content was inspected; source inspection was selective."
     ]
   },
   "findings": [
     {
+      "id": "hardcoded_configuration",
+      "category": "configuration",
+      "severity": "low",
+      "title": "Development endpoint detected",
+      "summary": "A localhost, development, staging, or internal endpoint was found in inspected content. This is configuration context, not automatically a security problem or secret.",
+      "evidence": [
+        "client/lib/core/config/api_config.dart",
+        "api/app/core/config.py"
+      ],
+      "affected_paths": [
+        "client/lib/core/config/api_config.dart",
+        "api/app/core/config.py"
+      ],
+      "confidence": "medium",
+      "recommendation": "Confirm that this endpoint belongs in versioned configuration and is safe for the target environment.",
+      "why_it_matters": "Environment-specific configuration embedded in source can make deployment and configuration management harder.",
+      "recommended_action": "Move environment-specific values into an appropriate configuration mechanism and keep secrets outside source control."
+    },
+    {
+      "id": "deep_path",
+      "category": "architecture",
+      "severity": "low",
+      "title": "Some repository paths are unusually deep",
+      "summary": "Deep paths can make navigation and ownership harder to understand; this is a structural observation, not a design verdict.",
+      "evidence": [
+        "client/android/app/src/main/kotlin/com/example/github_repo_inspector/MainActivity.kt",
+        "client/android/app/src/main/res/drawable-v21/launch_background.xml",
+        "client/android/app/src/main/res/drawable/launch_background.xml",
+        "client/android/app/src/main/res/values-night/styles.xml",
+        "client/android/app/src/main/res/values/styles.xml",
+        "client/lib/features/repository_inspection/data/models/ai_explanation.dart",
+        "client/lib/features/repository_inspection/data/models/project_report.dart",
+        "client/lib/features/repository_inspection/presentation/screens/inspection_screen.dart",
+        "client/lib/features/repository_inspection/presentation/screens/report_screen.dart",
+        "client/lib/features/repository_inspection/presentation/state/inspection_controller.dart"
+      ],
+      "affected_paths": [
+        "client/android/app/src/main/kotlin/com/example/github_repo_inspector/MainActivity.kt",
+        "client/android/app/src/main/res/drawable-v21/launch_background.xml",
+        "client/android/app/src/main/res/drawable/launch_background.xml",
+        "client/android/app/src/main/res/values-night/styles.xml",
+        "client/android/app/src/main/res/values/styles.xml",
+        "client/lib/features/repository_inspection/data/models/ai_explanation.dart",
+        "client/lib/features/repository_inspection/data/models/project_report.dart",
+        "client/lib/features/repository_inspection/presentation/screens/inspection_screen.dart",
+        "client/lib/features/repository_inspection/presentation/screens/report_screen.dart",
+        "client/lib/features/repository_inspection/presentation/state/inspection_controller.dart"
+      ],
+      "confidence": "medium",
+      "recommendation": "Review whether deeply nested modules can be grouped by clear responsibility.",
+      "why_it_matters": "Very deep paths can make navigation and ownership harder to understand.",
+      "recommended_action": "Review whether deeply nested modules can be grouped by clear responsibility."
+    },
+    {
+      "id": "api_boundary_observed",
+      "category": "architecture",
+      "severity": "info",
+      "title": "API boundary evidence detected",
+      "summary": "Observable route, API, or protocol signals suggest an API boundary; this is not a complete API inventory.",
+      "evidence": [
+        "api/app/api/repositories.py: API signal detected",
+        "api/app/api/sample.py: API signal detected"
+      ],
+      "affected_paths": [
+        "api/app/api/repositories.py",
+        "api/app/api/sample.py"
+      ],
+      "confidence": "high",
+      "recommendation": "Document the exposed boundary and its request/response contract.",
+      "why_it_matters": "An explicit API boundary helps reviewers understand how clients and services communicate.",
+      "recommended_action": "Document the exposed boundary and its request/response contract."
+    },
+    {
+      "id": "client_backend_separation",
+      "category": "architecture",
+      "severity": "info",
+      "title": "Client and backend areas are separated",
+      "summary": "Top-level structure contains recognizable client/frontend/mobile and backend/API/server areas.",
+      "evidence": [
+        "api",
+        "client"
+      ],
+      "affected_paths": [
+        "api",
+        "client"
+      ],
+      "confidence": "high",
+      "recommendation": "Document the boundary and communication contract between these areas.",
+      "why_it_matters": "A visible client/backend boundary can help contributors locate responsibilities and integration points.",
+      "recommended_action": "Document the boundary and communication contract between these areas."
+    },
+    {
+      "id": "monorepo_structure_observed",
+      "category": "architecture",
+      "severity": "info",
+      "title": "Multiple package areas observed",
+      "summary": "More than one dependency manifest appears in separate repository areas, suggesting a multi-package structure.",
+      "evidence": [
+        "api/requirements.txt",
+        "client/pubspec.yaml"
+      ],
+      "affected_paths": [
+        "api/requirements.txt",
+        "client/pubspec.yaml"
+      ],
+      "confidence": "high",
+      "recommendation": "Document package ownership and how the package areas are built or released.",
+      "why_it_matters": "Multiple package areas can increase build and ownership complexity.",
+      "recommended_action": "Document package ownership and how the package areas are built or released."
+    },
+    {
       "id": "todo_markers",
       "category": "maintainability",
       "severity": "low",
-      "title": "1 unresolved-work marker detected",
+      "title": "2 unresolved-work markers detected",
       "summary": "TODO, FIXME, HACK, or XXX markers indicate review items; they are not automatically bugs. ",
       "evidence": [
-        "lib/trail_sg.dart"
+        "client/android/app/build.gradle.kts"
       ],
       "affected_paths": [
-        "lib/trail_sg.dart"
+        "client/android/app/build.gradle.kts"
       ],
       "confidence": "high",
       "recommendation": "Review unresolved work markers before presenting the repository as production-ready.",
@@ -153,10 +550,34 @@
       "title": "Automated test evidence detected",
       "summary": "Test directories or test files are present in the inspected repository.",
       "evidence": [
-        "test/trail_test.dart"
+        "client/test/fixture.dart",
+        "client/test/repository_api_test.dart",
+        "client/test/unit_test.dart",
+        "client/test/widget_test.dart",
+        "tests/test_ai.py",
+        "tests/test_analyzer.py",
+        "tests/test_dependencies.py",
+        "tests/test_github_ingestion.py",
+        "tests/test_health.py",
+        "tests/test_offline.py",
+        "tests/test_report_builder.py",
+        "tests/test_repositories.py",
+        "tests/test_static_health.py"
       ],
       "affected_paths": [
-        "test/trail_test.dart"
+        "client/test/fixture.dart",
+        "client/test/repository_api_test.dart",
+        "client/test/unit_test.dart",
+        "client/test/widget_test.dart",
+        "tests/test_ai.py",
+        "tests/test_analyzer.py",
+        "tests/test_dependencies.py",
+        "tests/test_github_ingestion.py",
+        "tests/test_health.py",
+        "tests/test_offline.py",
+        "tests/test_report_builder.py",
+        "tests/test_repositories.py",
+        "tests/test_static_health.py"
       ],
       "confidence": "high",
       "recommendation": "Keep the test suite maintained as the codebase changes.",
@@ -164,28 +585,45 @@
       "recommended_action": "Keep the test suite maintained as the codebase changes."
     },
     {
-      "id": "architecture_documentation_not_detected",
+      "id": "documentation_verified",
       "category": "documentation",
-      "severity": "low",
-      "title": "Architecture information not detected",
-      "summary": "The README does not contain recognizable architecture information. This does not prove the information is unavailable elsewhere.",
+      "severity": "info",
+      "title": "README claim supported: Flutter",
+      "summary": "The README mentions Flutter, and matching deterministic evidence was detected.",
       "evidence": [
         "README.md"
       ],
       "affected_paths": [
         "README.md"
       ],
-      "confidence": "medium",
-      "recommendation": "Add concise architecture information for developers who need to run or extend the project.",
-      "why_it_matters": "Missing architecture guidance makes boundaries and responsibilities harder to discover.",
-      "recommended_action": "Add a short architecture or project-structure explanation to the README."
+      "confidence": "high",
+      "recommendation": "Keep the documentation aligned with the detected repository evidence.",
+      "why_it_matters": "Matching evidence gives users a concrete basis for the documented technology claim.",
+      "recommended_action": "Keep the documentation aligned with the detected repository evidence."
     },
     {
-      "id": "testing_instructions_not_detected",
+      "id": "documentation_verified",
       "category": "documentation",
-      "severity": "low",
-      "title": "Testing instructions not detected",
-      "summary": "The README does not contain recognizable testing instructions. This does not prove the information is unavailable elsewhere.",
+      "severity": "info",
+      "title": "README claim supported: FastAPI",
+      "summary": "The README mentions FastAPI, and matching deterministic evidence was detected.",
+      "evidence": [
+        "README.md"
+      ],
+      "affected_paths": [
+        "README.md"
+      ],
+      "confidence": "high",
+      "recommendation": "Keep the documentation aligned with the detected repository evidence.",
+      "why_it_matters": "Matching evidence gives users a concrete basis for the documented technology claim.",
+      "recommended_action": "Keep the documentation aligned with the detected repository evidence."
+    },
+    {
+      "id": "documentation_unverified",
+      "category": "documentation",
+      "severity": "info",
+      "title": "README claim could not be verified: PostgreSQL",
+      "summary": "The README mentions PostgreSQL, but matching evidence was not found in the bounded inspection. This does not prove the claim is false.",
       "evidence": [
         "README.md"
       ],
@@ -193,20 +631,81 @@
         "README.md"
       ],
       "confidence": "medium",
-      "recommendation": "Add concise testing instructions for developers who need to run or extend the project.",
-      "why_it_matters": "Missing testing guidance makes it harder to verify changes consistently.",
-      "recommended_action": "Document the commands used to run the repository's tests."
+      "recommendation": "Review the claim or provide the relevant configuration/dependency evidence.",
+      "why_it_matters": "Incorrect documentation can mislead users, contributors, and recruiters, but missing evidence does not prove the claim false.",
+      "recommended_action": "Verify the README claim against the current implementation or provide the relevant dependency/configuration evidence."
+    },
+    {
+      "id": "purpose_authentication_not_observed",
+      "category": "documentation",
+      "severity": "info",
+      "title": "Purpose claim not verified: authentication",
+      "summary": "The README or repository description mentions authentication, but matching evidence was not found in the bounded inspection. This is a potential inconsistency, not proof that the claim is false.",
+      "evidence": [
+        "README.md"
+      ],
+      "affected_paths": [
+        "README.md"
+      ],
+      "confidence": "medium",
+      "recommendation": "Review the stated purpose against the current implementation and add or update supporting documentation.",
+      "why_it_matters": "An unverified authentication claim can create incorrect expectations about access control.",
+      "recommended_action": "Review the authentication claim against detected implementation and configuration evidence."
+    },
+    {
+      "id": "deployment_configuration_detected",
+      "category": "release",
+      "severity": "info",
+      "title": "Deployment configuration detected",
+      "summary": "The bounded repository tree contains recognizable deployment or container configuration.",
+      "evidence": [
+        "Dockerfile"
+      ],
+      "affected_paths": [
+        "Dockerfile"
+      ],
+      "confidence": "high",
+      "recommendation": "Keep deployment instructions and environment requirements documented.",
+      "why_it_matters": "Deployment configuration helps explain how the project is intended to run outside development.",
+      "recommended_action": "Keep deployment instructions and environment requirements documented."
+    },
+    {
+      "id": "multiple_dependency_manifests",
+      "category": "dependencies",
+      "severity": "info",
+      "title": "Multiple dependency manifests detected",
+      "summary": "More than one dependency-management manifest is present. This may be intentional for a multi-language or multi-package repository.",
+      "evidence": [
+        "api/requirements.txt",
+        "client/android/app/build.gradle.kts",
+        "client/android/build.gradle.kts",
+        "client/pubspec.yaml"
+      ],
+      "affected_paths": [
+        "api/requirements.txt",
+        "client/android/app/build.gradle.kts",
+        "client/android/build.gradle.kts",
+        "client/pubspec.yaml"
+      ],
+      "confidence": "high",
+      "recommendation": "Document the ownership and build boundary for: build.gradle.kts, pubspec.yaml, requirements.txt.",
+      "why_it_matters": "Multiple manifests can be intentional, but undocumented boundaries make dependency maintenance harder.",
+      "recommended_action": "Document which package or ecosystem owns each manifest and how they are built."
     }
   ],
   "health_summary": {
-    "total_findings": 4,
+    "total_findings": 13,
     "category_counts": {
-      "documentation": 2,
+      "architecture": 4,
+      "configuration": 1,
+      "dependencies": 1,
+      "documentation": 4,
       "maintainability": 1,
+      "release": 1,
       "testing": 1
     },
     "severity_counts": {
-      "info": 1,
+      "info": 10,
       "low": 3
     },
     "overall": "Static inspection only"
@@ -217,24 +716,98 @@
       "Technology and structure signals are based on deterministic matching."
     ],
     "potential_issues": [
-      "1 unresolved-work marker detected",
-      "Architecture information not detected",
-      "Testing instructions not detected"
+      "Development endpoint detected",
+      "Some repository paths are unusually deep",
+      "2 unresolved-work markers detected"
     ],
-    "not_verified": [
-      "Architecture information not detected",
-      "Testing instructions not detected"
-    ],
+    "not_verified": [],
     "limitations": [
-      "Only bounded repository content was inspected; source inspection was selective."
+      "Skipped source file over the per-file limit: api/app/services/analyzer.py",
+      "Skipped source file over the per-file limit: api/app/services/static_health.py",
+      "Skipped source file over the per-file limit: api/app/data/sample_report.json",
+      "Skipped 56 source files because of inspection limits or read errors.",
+      "3 source files exceeded the per-file limit.",
+      "Analyzed a local folder; GitHub metadata (stars, forks, default branch) is not available.",
+      "Only bounded content was inspected; source inspection was selective."
     ],
     "runtime_status": "Code was not executed."
   },
   "source_inspection": {
-    "files_inspected": 7,
-    "files_skipped": 0,
-    "files_truncated": 0,
-    "content_truncated": false,
-    "notes": []
-  }
+    "files_inspected": 24,
+    "files_skipped": 56,
+    "files_truncated": 3,
+    "content_truncated": true,
+    "notes": [
+      "Skipped source file over the per-file limit: api/app/services/analyzer.py",
+      "Skipped source file over the per-file limit: api/app/services/static_health.py",
+      "Skipped source file over the per-file limit: api/app/data/sample_report.json",
+      "Skipped 56 source files because of inspection limits or read errors.",
+      "3 source files exceeded the per-file limit."
+    ]
+  },
+  "dependencies": [
+    {
+      "name": "fastapi",
+      "version": "==0.141.1",
+      "ecosystem": "PyPI",
+      "kind": "runtime",
+      "source": "api/requirements.txt"
+    },
+    {
+      "name": "uvicorn",
+      "version": "==0.52.4",
+      "ecosystem": "PyPI",
+      "kind": "runtime",
+      "source": "api/requirements.txt"
+    },
+    {
+      "name": "httpx",
+      "version": "==0.28.1",
+      "ecosystem": "PyPI",
+      "kind": "runtime",
+      "source": "api/requirements.txt"
+    },
+    {
+      "name": "pytest",
+      "version": "==9.1.1",
+      "ecosystem": "PyPI",
+      "kind": "runtime",
+      "source": "api/requirements.txt"
+    },
+    {
+      "name": "google-genai",
+      "version": "==2.22.0",
+      "ecosystem": "PyPI",
+      "kind": "runtime",
+      "source": "api/requirements.txt"
+    },
+    {
+      "name": "flutter",
+      "version": "sdk: flutter",
+      "ecosystem": "pub",
+      "kind": "runtime",
+      "source": "client/pubspec.yaml"
+    },
+    {
+      "name": "http",
+      "version": "^1.3.0",
+      "ecosystem": "pub",
+      "kind": "runtime",
+      "source": "client/pubspec.yaml"
+    },
+    {
+      "name": "flutter_test",
+      "version": "sdk: flutter",
+      "ecosystem": "pub",
+      "kind": "dev",
+      "source": "client/pubspec.yaml"
+    },
+    {
+      "name": "flutter_lints",
+      "version": "^6.0.0",
+      "ecosystem": "pub",
+      "kind": "dev",
+      "source": "client/pubspec.yaml"
+    }
+  ]
 }
