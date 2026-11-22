@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'models/ai_explanation.dart';
 import 'models/project_report.dart';
+import 'repository_url.dart';
 
 abstract interface class RepositoryApi {
   Future<ProjectReport> inspect(String repositoryUrl);
@@ -21,9 +22,12 @@ class HttpRepositoryApi implements RepositoryApi {
 
   @override
   Future<ProjectReport> inspect(String repositoryUrl) async {
-    _validateRepositoryUrl(repositoryUrl);
+    final repository = RepositoryUrl.tryParse(repositoryUrl);
+    if (repository == null) {
+      throw const ApiException(invalidUrlMessage);
+    }
     final response = await _post('/api/v1/repositories/inspect', {
-      'url': repositoryUrl,
+      'url': repository.url,
     }, timeout: const Duration(seconds: 45));
     return ProjectReport.fromJson(response);
   }
@@ -67,7 +71,7 @@ class HttpRepositoryApi implements RepositoryApi {
       throw const ApiException('The server returned an invalid report.');
     } on Exception catch (_) {
       throw const ApiException(
-        'The API could not be reached. Check your connection and try again.',
+        'Could not connect to the inspector. If you are offline, the sample report still works.',
       );
     }
   }
@@ -82,25 +86,15 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-void _validateRepositoryUrl(String value) {
-  final uri = Uri.tryParse(value.trim());
-  final parts =
-      uri?.pathSegments.where((part) => part.isNotEmpty).toList() ?? [];
-  if (uri == null ||
-      uri.scheme != 'https' ||
-      uri.host.toLowerCase() != 'github.com' ||
-      parts.length != 2) {
-    throw const ApiException(
-      'Enter a public GitHub URL like https://github.com/owner/repository.',
-    );
-  }
-}
+const invalidUrlMessage =
+    'Enter a public GitHub URL like https://github.com/owner/repository (or just owner/repository).';
 
 String _messageForStatus(int statusCode) => switch (statusCode) {
   400 || 422 => 'The repository URL is not valid.',
   404 => 'Repository not found or not public.',
   409 => 'This repository is empty and cannot be analyzed yet.',
-  429 => 'GitHub is rate-limiting requests. Try again later.',
+  429 => 'GitHub is limiting requests right now. Try again in a few minutes.',
+  500 => 'The analysis failed on the server. Please try again.',
   502 => 'The GitHub service returned an invalid response.',
   503 => 'The GitHub service is temporarily unavailable.',
   _ => 'The API returned an unexpected error ($statusCode).',

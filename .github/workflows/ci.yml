@@ -26,6 +26,14 @@ jobs:
         env:
           PYTHONPATH: api
         run: python -m pytest
+      - name: CLI smoke test (offline folder analysis)
+        working-directory: api
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m app.cli inspect .. -f markdown -o "$RUNNER_TEMP/report.md"
+          python -m app.cli sample -f json > /dev/null
+          test -s "$RUNNER_TEMP/report.md"
 
   client-tests:
     runs-on: ubuntu-latest
@@ -47,3 +55,6 @@ jobs:
       - name: Run client tests
         working-directory: client
         run: flutter test
+      - name: Build offline-ready Web client
+        working-directory: client
+        run: flutter build web --release --no-web-resources-cdn

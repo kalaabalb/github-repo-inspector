@@ -149,6 +149,7 @@ class RepositorySummary {
     required this.stars,
     required this.forks,
     required this.primaryLanguage,
+    this.source = 'github',
   });
 
   final String owner;
@@ -161,6 +162,11 @@ class RepositorySummary {
   final int forks;
   final String? primaryLanguage;
 
+  /// 'github' or 'local' (a folder or ZIP analysed without GitHub).
+  final String source;
+
+  bool get isLocal => source == 'local';
+
   factory RepositorySummary.fromJson(Map<String, dynamic> json) {
     return RepositorySummary(
       owner: json['owner'] as String,
@@ -172,6 +178,7 @@ class RepositorySummary {
       stars: json['stars'] as int,
       forks: json['forks'] as int,
       primaryLanguage: json['primary_language'] as String?,
+      source: json['source'] as String? ?? 'github',
     );
   }
 }
@@ -294,6 +301,44 @@ class ReportLimitations {
   }
 }
 
+class Dependency {
+  const Dependency({
+    required this.name,
+    required this.version,
+    required this.ecosystem,
+    required this.kind,
+    required this.source,
+  });
+
+  final String name;
+  final String? version;
+  final String ecosystem;
+
+  /// 'runtime', 'dev' or 'optional'.
+  final String kind;
+
+  /// The manifest file the dependency was declared in.
+  final String source;
+
+  factory Dependency.fromJson(Map<String, dynamic> json) {
+    return Dependency(
+      name: json['name'] as String,
+      version: json['version'] as String?,
+      ecosystem: json['ecosystem'] as String,
+      kind: json['kind'] as String? ?? 'runtime',
+      source: json['source'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'version': version,
+    'ecosystem': ecosystem,
+    'kind': kind,
+    'source': source,
+  };
+}
+
 class ProjectReport {
   const ProjectReport({
     required this.repository,
@@ -310,6 +355,7 @@ class ProjectReport {
     required this.healthSummary,
     required this.trustContext,
     required this.sourceInspection,
+    this.dependencies = const [],
   });
 
   final RepositorySummary repository;
@@ -326,6 +372,7 @@ class ProjectReport {
   final HealthSummary healthSummary;
   final ReportTrustContext trustContext;
   final SourceInspectionSummary sourceInspection;
+  final List<Dependency> dependencies;
 
   factory ProjectReport.fromJson(Map<String, dynamic> json) {
     final api = json['api'] as Map<String, dynamic>;
@@ -366,6 +413,9 @@ class ProjectReport {
       sourceInspection: SourceInspectionSummary.fromJson(
         json['source_inspection'] as Map<String, dynamic>? ?? const {},
       ),
+      dependencies: (json['dependencies'] as List<dynamic>? ?? [])
+          .map((item) => Dependency.fromJson(item as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -380,6 +430,7 @@ class ProjectReport {
       'stars': repository.stars,
       'forks': repository.forks,
       'primary_language': repository.primaryLanguage,
+      'source': repository.source,
     },
     'overview': {
       'classifications': overview.classifications,
@@ -452,6 +503,7 @@ class ProjectReport {
       'content_truncated': sourceInspection.contentTruncated,
       'notes': sourceInspection.notes,
     },
+    'dependencies': dependencies.map((item) => item.toJson()).toList(),
   };
 }
 

@@ -20,7 +20,7 @@ class RepositoryInspectorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'GitHub Repository Inspector',
+      title: 'Repo Inspector',
       theme: AppTheme.dark(),
       home: InspectionScreen(controller: InspectionController(api)),
     );
